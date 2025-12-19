@@ -119,6 +119,129 @@ class PlaywrightManager:
             json.dump({"user_agent": user_agent}, f)
 
     @staticmethod
+    async def credential_login(username: str, password: str, timeout_seconds: int = 60) -> dict:
+        """
+        Headless login using username/password.
+        Works on Docker/NAS deployments without a display.
+        
+        Args:
+            username: TikTok username, email, or phone
+            password: TikTok password
+            timeout_seconds: Max time to wait for login
+            
+        Returns: {"status": "success/error", "message": "...", "cookie_count": N}
+        """
+        print(f"DEBUG: Starting headless credential login for: {username}")
+        
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=PlaywrightManager.BROWSER_ARGS
+            )
+            
+            context = await browser.new_context(
+                user_agent=PlaywrightManager.DEFAULT_USER_AGENT
+            )
+            
+            page = await context.new_page()
+            
+            try:
+                # Navigate to TikTok login page
+                await page.goto("https://www.tiktok.com/login/phone-or-email/email", wait_until="domcontentloaded")
+                await asyncio.sleep(2)
+                
+                print("DEBUG: Looking for login form...")
+                
+                # Wait for and fill username/email field
+                username_selector = 'input[name="username"], input[placeholder*="Email"], input[placeholder*="email"], input[type="text"]'
+                await page.wait_for_selector(username_selector, timeout=10000)
+                await page.fill(username_selector, username)
+                await asyncio.sleep(0.5)
+                
+                # Fill password field
+                password_selector = 'input[type="password"]'
+                await page.wait_for_selector(password_selector, timeout=5000)
+                await page.fill(password_selector, password)
+                await asyncio.sleep(0.5)
+                
+                print("DEBUG: Credentials filled, clicking login...")
+                
+                # Click login button
+                login_button = 'button[type="submit"], button[data-e2e="login-button"]'
+                await page.click(login_button)
+                
+                # Wait for login to complete - poll for sessionid cookie
+                print("DEBUG: Waiting for login to complete...")
+                elapsed = 0
+                check_interval = 2
+                cookies_found = {}
+                
+                while elapsed < timeout_seconds:
+                    await asyncio.sleep(check_interval)
+                    elapsed += check_interval
+                    
+                    # Check for error messages
+                    error_el = await page.query_selector('[class*="error"], [class*="Error"]')
+                    if error_el:
+                        error_text = await error_el.inner_text()
+                        if error_text and len(error_text) > 0:
+                            await browser.close()
+                            return {
+                                "status": "error",
+                                "message": f"Login failed: {error_text[:100]}",
+                                "cookie_count": 0
+                            }
+                    
+                    # Check cookies
+                    all_cookies = await context.cookies()
+                    for cookie in all_cookies:
+                        if cookie.get("domain", "").endswith("tiktok.com"):
+                            cookies_found[cookie["name"]] = cookie["value"]
+                    
+                    if "sessionid" in cookies_found:
+                        print(f"DEBUG: Login successful! Found {len(cookies_found)} cookies.")
+                        break
+                    
+                    # Check if CAPTCHA or verification needed
+                    captcha = await page.query_selector('[class*="captcha"], [class*="Captcha"], [class*="verify"]')
+                    if captcha:
+                        await browser.close()
+                        return {
+                            "status": "error",
+                            "message": "TikTok requires verification (CAPTCHA). Please try the cookie method.",
+                            "cookie_count": 0
+                        }
+                    
+                    print(f"DEBUG: Waiting for login... ({elapsed}s)")
+                
+                await browser.close()
+                
+                if "sessionid" not in cookies_found:
+                    return {
+                        "status": "error",
+                        "message": "Login timed out. Check your credentials or try the cookie method.",
+                        "cookie_count": 0
+                    }
+                
+                # Save credentials
+                PlaywrightManager.save_credentials(cookies_found, PlaywrightManager.DEFAULT_USER_AGENT)
+                
+                return {
+                    "status": "success",
+                    "message": "Successfully logged in!",
+                    "cookie_count": len(cookies_found)
+                }
+                
+            except Exception as e:
+                await browser.close()
+                print(f"DEBUG: Login error: {e}")
+                return {
+                    "status": "error",
+                    "message": f"Login failed: {str(e)[:100]}",
+                    "cookie_count": 0
+                }
+
+    @staticmethod
     async def browser_login(timeout_seconds: int = 180) -> dict:
         """
         Open visible browser for user to login via TikTok's SSL login.

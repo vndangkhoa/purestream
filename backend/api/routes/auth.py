@@ -22,6 +22,33 @@ class CredentialsRequest(BaseModel):
     credentials: dict  # JSON credentials in http.headers format
 
 
+class CredentialLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/login", response_model=BrowserLoginResponse)
+async def credential_login(request: CredentialLoginRequest):
+    """
+    Login with TikTok username/email and password.
+    Uses headless browser - works on Docker/NAS.
+    """
+    try:
+        result = await PlaywrightManager.credential_login(
+            username=request.username,
+            password=request.password,
+            timeout_seconds=60
+        )
+        return BrowserLoginResponse(
+            status=result["status"],
+            message=result["message"],
+            cookie_count=result.get("cookie_count", 0)
+        )
+    except Exception as e:
+        print(f"DEBUG: Credential login error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/browser-login", response_model=BrowserLoginResponse)
 async def browser_login():
     """
