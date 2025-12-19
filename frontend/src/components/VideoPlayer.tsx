@@ -42,6 +42,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [localMuted, setLocalMuted] = useState(true);
     const isMuted = externalMuted !== undefined ? externalMuted : localMuted;
     const [hearts, setHearts] = useState<HeartParticle[]>([]);
+    const [isLoading, setIsLoading] = useState(true);  // Show loading spinner until video is ready
     const lastTapRef = useRef<number>(0);
 
     // Full proxy URL (yt-dlp, always works but heavier)
@@ -105,9 +106,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isActive]);
 
-    // Reset fallback when video changes
+    // Reset fallback and loading state when video changes
     useEffect(() => {
         setUseFallback(false);
+        setIsLoading(true);  // Show loading for new video
     }, [video.id]);
 
     // Progress tracking
@@ -309,7 +311,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 muted={isMuted}
                 className="w-full h-full"
                 style={{ objectFit }}
+                onCanPlay={() => setIsLoading(false)}
+                onWaiting={() => setIsLoading(true)}
+                onPlaying={() => setIsLoading(false)}
             />
+
+            {/* Loading Spinner Overlay */}
+            {isLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20">
+                    <div className="flex flex-col items-center gap-4">
+                        <div className="w-12 h-12 border-4 border-white/20 border-t-cyan-400 rounded-full animate-spin" />
+                        <span className="text-white/60 text-sm">Loading...</span>
+                    </div>
+                </div>
+            )}
 
             {/* Heart Animation Particles */}
             {hearts.map(heart => (
