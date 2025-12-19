@@ -1,23 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../config';
 
 export const Login: React.FC = () => {
+    const [sessionId, setSessionId] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [searchParams] = useSearchParams();
     const navigate = useNavigate();
 
-    // Check if we have a sessionid from URL (bookmarklet redirect)
-    useEffect(() => {
-        const sessionIdFromUrl = searchParams.get('sessionid');
-        if (sessionIdFromUrl) {
-            handleAutoConnect(sessionIdFromUrl);
-        }
-    }, [searchParams]);
+    const handleConnect = async () => {
+        if (!sessionId.trim()) return;
 
-    const handleAutoConnect = async (sessionId: string) => {
         setError('');
         setIsLoading(true);
 
@@ -25,7 +19,7 @@ export const Login: React.FC = () => {
             const res = await axios.post(`${API_BASE_URL}/auth/credentials`, {
                 credentials: {
                     http: {
-                        cookies: { sessionid: sessionId }
+                        cookies: { sessionid: sessionId.trim() }
                     }
                 }
             });
@@ -33,39 +27,23 @@ export const Login: React.FC = () => {
             if (res.data.status === 'success') {
                 navigate('/');
             } else {
-                setError('Connection failed. Please try again.');
-                setIsLoading(false);
+                setError('Connection failed. Please check your session ID.');
             }
         } catch (err: any) {
-            setError('Invalid session. Please try again.');
+            setError('Invalid session ID. Please try again.');
+        } finally {
             setIsLoading(false);
         }
     };
 
-    // Get the current app URL for bookmarklet redirect
-    const appUrl = window.location.origin;
-
-    // Bookmarklet code - extracts sessionid and redirects back
-    const bookmarkletCode = `javascript:(function(){var c=document.cookie.split(';');var s='';for(var i=0;i<c.length;i++){var p=c[i].trim().split('=');if(p[0]==='sessionid'){s=p[1];break;}}if(s){window.location='${appUrl}/login?sessionid='+encodeURIComponent(s);}else{alert('Please login to TikTok first!');}})();`;
-
-    const copyBookmarklet = () => {
-        navigator.clipboard.writeText(bookmarkletCode);
-        alert('Bookmarklet code copied! Create a new bookmark and paste this as the URL.');
+    const openTikTokLogin = () => {
+        window.open('https://www.tiktok.com/login', '_blank');
     };
-
-    if (isLoading) {
-        return (
-            <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950 flex flex-col items-center justify-center">
-                <div className="w-16 h-16 border-4 border-pink-500/30 border-t-pink-500 rounded-full animate-spin mb-4" />
-                <p className="text-white">Connecting to TikTok...</p>
-            </div>
-        );
-    }
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950 flex flex-col">
             {/* Header */}
-            <div className="flex-shrink-0 pt-10 pb-4 px-6 text-center">
+            <div className="flex-shrink-0 pt-8 pb-4 px-6 text-center">
                 <div className="relative inline-block mb-3">
                     <div className="w-14 h-14 bg-gradient-to-r from-cyan-400 to-pink-500 rounded-2xl rotate-12 absolute -inset-1 blur-lg opacity-50" />
                     <div className="relative w-14 h-14 bg-gradient-to-r from-cyan-400 to-pink-500 rounded-2xl flex items-center justify-center">
@@ -87,59 +65,90 @@ export const Login: React.FC = () => {
                         </div>
                     )}
 
-                    {/* One-Time Setup (Desktop) */}
-                    <div className="bg-gradient-to-r from-cyan-500/10 to-pink-500/10 border border-white/10 rounded-2xl p-5 mb-6">
-                        <h2 className="text-white font-semibold mb-3 flex items-center gap-2">
-                            <span className="text-lg">🖥️</span> Desktop Setup (One-Time)
-                        </h2>
-                        <ol className="text-gray-300 text-sm space-y-2 mb-4">
-                            <li className="flex gap-2">
-                                <span className="text-cyan-400">1.</span>
-                                <span>Drag this button to your bookmarks bar:</span>
-                            </li>
-                        </ol>
-
-                        {/* Draggable Bookmarklet */}
-                        <a
-                            href={bookmarkletCode}
-                            onClick={(e) => e.preventDefault()}
-                            onDragEnd={() => { }}
-                            className="inline-block py-2 px-4 bg-gradient-to-r from-pink-500 to-orange-500 text-white font-bold rounded-lg text-sm cursor-grab active:cursor-grabbing shadow-lg mb-4"
-                            title="Drag me to your bookmarks bar!"
-                        >
-                            📎 Get PureStream
-                        </a>
-
-                        <p className="text-gray-500 text-xs">
-                            Can't drag? <button onClick={copyBookmarklet} className="text-cyan-400 underline">Copy code</button> and create a bookmark manually.
+                    {/* Important Note */}
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-5">
+                        <p className="text-amber-400 text-sm text-center">
+                            ⚠️ This requires a <strong>desktop/laptop</strong> computer with Chrome or Firefox
                         </p>
                     </div>
 
-                    {/* How to Use */}
-                    <div className="bg-white/5 rounded-2xl p-5">
-                        <h2 className="text-white font-semibold mb-3 flex items-center gap-2">
-                            <span className="text-lg">📱</span> How to Connect
-                        </h2>
-                        <ol className="text-gray-300 text-sm space-y-3">
-                            <li className="flex gap-3">
-                                <div className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-xs">1</div>
-                                <span>Go to <a href="https://www.tiktok.com" target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline">tiktok.com</a> and login with your account</span>
-                            </li>
-                            <li className="flex gap-3">
-                                <div className="w-6 h-6 bg-pink-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-xs">2</div>
-                                <span>Click the <strong className="text-pink-400">"📎 Get PureStream"</strong> bookmark</span>
-                            </li>
-                            <li className="flex gap-3">
-                                <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-xs">3</div>
-                                <span>You'll be automatically redirected and logged in!</span>
-                            </li>
-                        </ol>
+                    {/* Steps */}
+                    <div className="space-y-4 mb-6">
+                        <div className="flex gap-3 items-start">
+                            <div className="w-8 h-8 bg-cyan-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold">1</div>
+                            <div className="flex-1">
+                                <p className="text-white text-sm font-medium mb-2">Login to TikTok on desktop</p>
+                                <button
+                                    onClick={openTikTokLogin}
+                                    className="w-full py-2.5 bg-black border border-white/20 hover:border-white/40 rounded-lg text-white text-sm font-medium flex items-center justify-center gap-2 transition-all"
+                                >
+                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.32 0 .6.05.88.13V9.4c-.3-.04-.6-.05-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
+                                    </svg>
+                                    Open TikTok
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 items-start">
+                            <div className="w-8 h-8 bg-pink-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold">2</div>
+                            <div className="flex-1">
+                                <p className="text-white text-sm font-medium mb-1">Open DevTools & copy sessionid</p>
+                                <div className="bg-black/50 rounded-lg p-3 text-xs space-y-1">
+                                    <p className="text-gray-400">• Press <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-white">F12</kbd> or <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-white">Ctrl+Shift+I</kbd></p>
+                                    <p className="text-gray-400">• Click <span className="text-cyan-400">Application</span> tab</p>
+                                    <p className="text-gray-400">• Click <span className="text-cyan-400">Cookies</span> → <span className="text-cyan-400">tiktok.com</span></p>
+                                    <p className="text-gray-400">• Find <code className="text-pink-400 bg-pink-500/20 px-1 rounded">sessionid</code> and copy its value</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 items-start">
+                            <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold">3</div>
+                            <div className="flex-1">
+                                <p className="text-white text-sm font-medium mb-2">Paste here and connect</p>
+                                <input
+                                    type="text"
+                                    value={sessionId}
+                                    onChange={(e) => setSessionId(e.target.value)}
+                                    placeholder="Paste sessionid value..."
+                                    className="w-full bg-black border-2 border-white/10 rounded-lg p-3 text-white text-sm font-mono focus:outline-none focus:border-pink-500/50 placeholder:text-gray-600"
+                                    disabled={isLoading}
+                                />
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Note */}
-                    <p className="text-gray-600 text-xs text-center mt-6">
-                        The bookmarklet securely reads your TikTok session and connects it to PureStream.
-                    </p>
+                    {/* Connect Button */}
+                    <button
+                        onClick={handleConnect}
+                        disabled={!sessionId.trim() || isLoading}
+                        className={`w-full py-4 text-white font-bold rounded-xl transition-all text-base ${sessionId.trim() && !isLoading
+                                ? 'bg-gradient-to-r from-cyan-500 to-pink-500 shadow-lg shadow-pink-500/25'
+                                : 'bg-gray-700 cursor-not-allowed'
+                            }`}
+                    >
+                        {isLoading ? (
+                            <span className="flex items-center justify-center gap-2">
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                Connecting...
+                            </span>
+                        ) : (
+                            'Connect to PureStream'
+                        )}
+                    </button>
+
+                    {/* Help */}
+                    <div className="mt-6 text-center">
+                        <a
+                            href="https://www.youtube.com/results?search_query=how+to+find+tiktok+sessionid+cookie"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-gray-500 text-xs underline hover:text-gray-400"
+                        >
+                            Need help? Watch a video tutorial →
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
