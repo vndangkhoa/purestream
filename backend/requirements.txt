@@ -6,3 +6,5 @@ python-multipart
 websockets
 python-dotenv
 crawl4ai
+playwright
+playwright-stealth

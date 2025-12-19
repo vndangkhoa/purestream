@@ -12,6 +12,7 @@ import json
 import os
 from typing import List, Dict, Optional
 from playwright.async_api import async_playwright, Response, Browser, BrowserContext
+from playwright_stealth import stealth_async
 
 
 COOKIES_FILE = "cookies.json"
@@ -158,6 +159,7 @@ class PlaywrightManager:
             )
             
             cls._vnc_page = await cls._vnc_context.new_page()
+            await stealth_async(cls._vnc_page)
             await cls._vnc_page.goto("https://www.tiktok.com/login", wait_until="domcontentloaded")
             
             cls._vnc_active = True
@@ -258,6 +260,7 @@ class PlaywrightManager:
             )
             
             page = await context.new_page()
+            await stealth_async(page)
             
             try:
                 # Navigate to TikTok login page
@@ -376,6 +379,7 @@ class PlaywrightManager:
             )
             
             page = await context.new_page()
+            await stealth_async(page)
             
             # Navigate to TikTok login
             await page.goto("https://www.tiktok.com/login", wait_until="domcontentloaded")
@@ -480,6 +484,7 @@ class PlaywrightManager:
             await context.add_cookies(cookies)
             
             page = await context.new_page()
+            await stealth_async(page)
             
             # Set up response listener
             page.on("response", handle_response)
@@ -640,6 +645,7 @@ class PlaywrightManager:
             await context.add_cookies(cookies)
             
             page = await context.new_page()
+            await stealth_async(page)
             page.on("response", handle_response)
             
             try:
@@ -718,6 +724,7 @@ class PlaywrightManager:
             await context.add_cookies(cookies)
             
             page = await context.new_page()
+            await stealth_async(page)
             page.on("response", handle_response)
             
             try:
