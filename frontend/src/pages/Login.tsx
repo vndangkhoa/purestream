@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../config';
@@ -7,9 +7,53 @@ export const Login: React.FC = () => {
     const [sessionId, setSessionId] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [loginStatus, setLoginStatus] = useState('');
     const navigate = useNavigate();
 
-    const handleConnect = async () => {
+    // Check if already authenticated
+    useEffect(() => {
+        checkAuth();
+    }, []);
+
+    const checkAuth = async () => {
+        try {
+            const res = await axios.get(`${API_BASE_URL}/auth/status`);
+            if (res.data.authenticated) {
+                navigate('/');
+            }
+        } catch (err) {
+            // Not authenticated, stay on login
+        }
+    };
+
+    // Try browser login (opens TikTok in server's Playwright browser)
+    const handleBrowserLogin = async () => {
+        setError('');
+        setIsLoading(true);
+        setLoginStatus('Opening TikTok login... Please wait');
+
+        try {
+            const res = await axios.post(`${API_BASE_URL}/auth/browser-login`, {}, {
+                timeout: 200000 // 3+ minutes timeout
+            });
+
+            if (res.data.status === 'success') {
+                setLoginStatus('Success! Redirecting...');
+                setTimeout(() => navigate('/'), 1000);
+            } else {
+                setError(res.data.message || 'Login timed out. Please try the manual method.');
+                setIsLoading(false);
+                setLoginStatus('');
+            }
+        } catch (err: any) {
+            setError('Connection failed. Please try the manual method below.');
+            setIsLoading(false);
+            setLoginStatus('');
+        }
+    };
+
+    // Manual sessionid login
+    const handleManualLogin = async () => {
         if (!sessionId.trim()) return;
 
         setError('');
@@ -27,17 +71,13 @@ export const Login: React.FC = () => {
             if (res.data.status === 'success') {
                 navigate('/');
             } else {
-                setError('Connection failed. Please check your session ID.');
+                setError('Invalid session ID. Please try again.');
             }
         } catch (err: any) {
-            setError('Invalid session ID. Please try again.');
+            setError('Connection failed. Please check your session ID.');
         } finally {
             setIsLoading(false);
         }
-    };
-
-    const openTikTokLogin = () => {
-        window.open('https://www.tiktok.com/login', '_blank');
     };
 
     return (
@@ -65,88 +105,76 @@ export const Login: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Important Note */}
-                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-5">
-                        <p className="text-amber-400 text-sm text-center">
-                            ⚠️ This requires a <strong>desktop/laptop</strong> computer with Chrome or Firefox
+                    {/* Primary: Browser Login Button */}
+                    <div className="mb-6">
+                        <button
+                            onClick={handleBrowserLogin}
+                            disabled={isLoading}
+                            className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all ${isLoading
+                                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-pink-500 to-orange-500 text-white shadow-lg shadow-pink-500/25 hover:shadow-pink-500/40'
+                                }`}
+                        >
+                            {isLoading ? (
+                                <>
+                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    {loginStatus || 'Please wait...'}
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.32 0 .6.05.88.13V9.4c-.3-.04-.6-.05-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
+                                    </svg>
+                                    Login with TikTok
+                                </>
+                            )}
+                        </button>
+                        <p className="text-gray-600 text-xs text-center mt-2">
+                            Opens TikTok login - complete the login and wait
                         </p>
                     </div>
 
-                    {/* Steps */}
-                    <div className="space-y-4 mb-6">
-                        <div className="flex gap-3 items-start">
-                            <div className="w-8 h-8 bg-cyan-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold">1</div>
-                            <div className="flex-1">
-                                <p className="text-white text-sm font-medium mb-2">Login to TikTok on desktop</p>
-                                <button
-                                    onClick={openTikTokLogin}
-                                    className="w-full py-2.5 bg-black border border-white/20 hover:border-white/40 rounded-lg text-white text-sm font-medium flex items-center justify-center gap-2 transition-all"
-                                >
-                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.32 0 .6.05.88.13V9.4c-.3-.04-.6-.05-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
-                                    </svg>
-                                    Open TikTok
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3 items-start">
-                            <div className="w-8 h-8 bg-pink-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold">2</div>
-                            <div className="flex-1">
-                                <p className="text-white text-sm font-medium mb-1">Open DevTools & copy sessionid</p>
-                                <div className="bg-black/50 rounded-lg p-3 text-xs space-y-1">
-                                    <p className="text-gray-400">• Press <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-white">F12</kbd> or <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-white">Ctrl+Shift+I</kbd></p>
-                                    <p className="text-gray-400">• Click <span className="text-cyan-400">Application</span> tab</p>
-                                    <p className="text-gray-400">• Click <span className="text-cyan-400">Cookies</span> → <span className="text-cyan-400">tiktok.com</span></p>
-                                    <p className="text-gray-400">• Find <code className="text-pink-400 bg-pink-500/20 px-1 rounded">sessionid</code> and copy its value</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3 items-start">
-                            <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold">3</div>
-                            <div className="flex-1">
-                                <p className="text-white text-sm font-medium mb-2">Paste here and connect</p>
-                                <input
-                                    type="text"
-                                    value={sessionId}
-                                    onChange={(e) => setSessionId(e.target.value)}
-                                    placeholder="Paste sessionid value..."
-                                    className="w-full bg-black border-2 border-white/10 rounded-lg p-3 text-white text-sm font-mono focus:outline-none focus:border-pink-500/50 placeholder:text-gray-600"
-                                    disabled={isLoading}
-                                />
-                            </div>
-                        </div>
+                    {/* Divider */}
+                    <div className="flex items-center gap-3 my-6">
+                        <div className="flex-1 h-px bg-white/10" />
+                        <span className="text-gray-500 text-xs">or paste manually</span>
+                        <div className="flex-1 h-px bg-white/10" />
                     </div>
 
-                    {/* Connect Button */}
-                    <button
-                        onClick={handleConnect}
-                        disabled={!sessionId.trim() || isLoading}
-                        className={`w-full py-4 text-white font-bold rounded-xl transition-all text-base ${sessionId.trim() && !isLoading
-                                ? 'bg-gradient-to-r from-cyan-500 to-pink-500 shadow-lg shadow-pink-500/25'
-                                : 'bg-gray-700 cursor-not-allowed'
-                            }`}
-                    >
-                        {isLoading ? (
-                            <span className="flex items-center justify-center gap-2">
-                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                Connecting...
-                            </span>
-                        ) : (
-                            'Connect to PureStream'
-                        )}
-                    </button>
+                    {/* Manual Method */}
+                    <div className="bg-white/5 rounded-xl p-4">
+                        <p className="text-gray-400 text-xs mb-3">
+                            If the button above doesn't work, paste your TikTok <code className="text-pink-400 bg-pink-500/20 px-1 rounded">sessionid</code> cookie:
+                        </p>
+                        <input
+                            type="text"
+                            value={sessionId}
+                            onChange={(e) => setSessionId(e.target.value)}
+                            placeholder="Paste sessionid here..."
+                            className="w-full bg-black border border-white/10 rounded-lg p-3 text-white text-sm font-mono focus:outline-none focus:border-pink-500/50 placeholder:text-gray-600 mb-3"
+                            disabled={isLoading}
+                        />
+                        <button
+                            onClick={handleManualLogin}
+                            disabled={!sessionId.trim() || isLoading}
+                            className={`w-full py-3 rounded-lg font-medium text-sm transition-all ${sessionId.trim() && !isLoading
+                                    ? 'bg-white/10 hover:bg-white/20 text-white'
+                                    : 'bg-white/5 text-gray-500 cursor-not-allowed'
+                                }`}
+                        >
+                            Connect
+                        </button>
+                    </div>
 
                     {/* Help */}
                     <div className="mt-6 text-center">
                         <a
-                            href="https://www.youtube.com/results?search_query=how+to+find+tiktok+sessionid+cookie"
+                            href="https://www.youtube.com/results?search_query=how+to+get+tiktok+sessionid+cookie"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-gray-500 text-xs underline hover:text-gray-400"
                         >
-                            Need help? Watch a video tutorial →
+                            How to get sessionid →
                         </a>
                     </div>
                 </div>
