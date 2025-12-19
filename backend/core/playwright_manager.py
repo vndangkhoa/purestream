@@ -534,7 +534,7 @@ class PlaywrightManager:
 
     @staticmethod
     def _extract_video_data(item: dict) -> Optional[dict]:
-        """Extract video data from TikTok API item."""
+        """Extract video data from TikTok API item, including product/shop videos."""
         try:
             # Handle different API response formats
             video_id = item.get("id") or item.get("aweme_id")
@@ -546,26 +546,43 @@ class PlaywrightManager:
             # Get description
             desc = item.get("desc") or item.get("description") or ""
             
+            # Check if this is a product/shop video
+            is_shop_video = bool(item.get("products") or item.get("commerce_info") or item.get("poi_info"))
+            
             # Get thumbnail/cover image
             thumbnail = None
             video_data = item.get("video", {})
             
             # Try different thumbnail sources
-            if video_data.get("cover"):
-                thumbnail = video_data["cover"]
-            elif video_data.get("dynamicCover"):
-                thumbnail = video_data["dynamicCover"]
-            elif video_data.get("originCover"):
-                thumbnail = video_data["originCover"]
+            thumbnail_sources = [
+                video_data.get("cover"),
+                video_data.get("dynamicCover"),
+                video_data.get("originCover"),
+                video_data.get("ai_dynamic_cover", {}).get("url_list", [None])[0] if isinstance(video_data.get("ai_dynamic_cover"), dict) else None,
+            ]
+            for src in thumbnail_sources:
+                if src:
+                    thumbnail = src
+                    break
             
-            # Get direct CDN URL (for thin proxy mode)
+            # Get direct CDN URL - try multiple sources (including for shop videos)
             cdn_url = None
-            if video_data.get("playAddr"):
-                cdn_url = video_data["playAddr"]
-            elif video_data.get("downloadAddr"):
-                cdn_url = video_data["downloadAddr"]
-            elif video_data.get("play_addr", {}).get("url_list"):
-                cdn_url = video_data["play_addr"]["url_list"][0]
+            cdn_sources = [
+                # Standard sources
+                video_data.get("playAddr"),
+                video_data.get("downloadAddr"),
+                # Bit rate sources (often works for shop videos)
+                video_data.get("bitrateInfo", [{}])[0].get("PlayAddr", {}).get("UrlList", [None])[0] if video_data.get("bitrateInfo") else None,
+                # Play URL list
+                video_data.get("play_addr", {}).get("url_list", [None])[0] if isinstance(video_data.get("play_addr"), dict) else None,
+                # Download URL list
+                video_data.get("download_addr", {}).get("url_list", [None])[0] if isinstance(video_data.get("download_addr"), dict) else None,
+            ]
+            
+            for src in cdn_sources:
+                if src:
+                    cdn_url = src
+                    break
             
             # Use TikTok page URL as fallback (yt-dlp resolves this)
             video_url = f"https://www.tiktok.com/@{author}/video/{video_id}"
@@ -590,6 +607,8 @@ class PlaywrightManager:
                     result["views"] = views
                 if likes:
                     result["likes"] = likes
+                if is_shop_video:
+                    result["has_product"] = True  # Flag for product videos
                 return result
         
         except Exception as e:
