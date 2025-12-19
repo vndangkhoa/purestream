@@ -192,17 +192,64 @@ async def get_suggested_accounts(
     try:
         accounts = await PlaywrightManager.fetch_suggested_accounts(cookies, user_agent, limit)
         
-        if accounts:
+        if accounts and len(accounts) >= 5:  # Need at least 5 accounts from dynamic fetch
             _suggested_cache["accounts"] = accounts
             _suggested_cache["updated_at"] = time.time()
             return {"accounts": accounts[:limit], "cached": False}
         else:
-            # Fallback if API fails
-            return {"accounts": get_fallback_accounts()[:limit], "cached": False, "fallback": True}
+            # Fallback: fetch actual profile data with avatars for static list
+            print("Dynamic fetch failed, fetching profile data for static accounts...")
+            fallback_list = get_fallback_accounts()[:min(limit, 20)]  # Limit to 20 for speed
+            return await fetch_profiles_with_avatars(fallback_list, cookies, user_agent)
             
     except Exception as e:
         print(f"Error fetching suggested accounts: {e}")
         return {"accounts": get_fallback_accounts()[:limit], "cached": False, "fallback": True}
+
+
+async def fetch_profiles_with_avatars(accounts: list, cookies: list, user_agent: str) -> dict:
+    """Fetch actual profile data with avatars for a list of accounts."""
+    
+    cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+    
+    headers = {
+        "User-Agent": user_agent or PlaywrightManager.DEFAULT_USER_AGENT,
+        "Referer": "https://www.tiktok.com/",
+        "Cookie": cookie_str,
+        "Accept": "application/json",
+    }
+    
+    enriched = []
+    
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for acc in accounts:
+            try:
+                url = f"https://www.tiktok.com/api/user/detail/?uniqueId={acc['username']}"
+                res = await client.get(url, headers=headers)
+                
+                if res.status_code == 200:
+                    data = res.json()
+                    user = data.get("userInfo", {}).get("user", {})
+                    stats = data.get("userInfo", {}).get("stats", {})
+                    
+                    if user:
+                        enriched.append({
+                            "username": acc["username"],
+                            "nickname": user.get("nickname") or acc.get("nickname", acc["username"]),
+                            "avatar": user.get("avatarThumb") or user.get("avatarMedium"),
+                            "followers": stats.get("followerCount", 0),
+                            "verified": user.get("verified", False),
+                            "region": "VN"
+                        })
+                        continue
+                        
+            except Exception as e:
+                print(f"Error fetching profile for {acc['username']}: {e}")
+            
+            # Fallback: use original data without avatar
+            enriched.append(acc)
+    
+    return {"accounts": enriched, "cached": False, "enriched": True}
 
 
 def get_fallback_accounts():
