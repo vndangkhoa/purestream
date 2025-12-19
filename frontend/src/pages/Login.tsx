@@ -12,11 +12,10 @@ export const Login: React.FC = () => {
     const pollIntervalRef = useRef<number | null>(null);
     const navigate = useNavigate();
 
-    // Check if already authenticated
+    // Check if already authenticated (ssl login check)
     useEffect(() => {
         checkAuth();
         return () => {
-            // Cleanup polling on unmount
             if (pollIntervalRef.current) {
                 clearInterval(pollIntervalRef.current);
             }
@@ -34,35 +33,34 @@ export const Login: React.FC = () => {
         }
     };
 
-    // Get the VNC URL (same host, port 6080)
     const getVncUrl = () => {
         const host = window.location.hostname;
-        return `http://${host}:6080/vnc.html?autoconnect=true&resize=scale`;
+        // autoconnect=true, resize=scale to fit, quality=9 for clear text
+        return `http://${host}:6080/vnc.html?autoconnect=true&resize=scale&quality=9`;
     };
 
-    // Start VNC login
     const handleVncLogin = async () => {
         setError('');
         setIsLoading(true);
-        setVncStatus('Starting browser...');
+        setVncStatus('Initializing secure browser...');
 
         try {
+            // Start the VNC session (SSL Login flow)
             const res = await axios.post(`${API_BASE_URL}/auth/start-vnc`);
 
             if (res.data.status === 'started') {
                 setShowVnc(true);
                 setIsLoading(false);
-                setVncStatus('Login on the browser below, then wait...');
+                setVncStatus('Waiting for login...');
 
-                // Start polling for login completion
+                // Poll for completion
                 pollIntervalRef.current = window.setInterval(async () => {
                     try {
                         const checkRes = await axios.get(`${API_BASE_URL}/auth/check-vnc`);
 
                         if (checkRes.data.logged_in) {
-                            // Success!
                             clearInterval(pollIntervalRef.current!);
-                            setVncStatus('Success! Redirecting...');
+                            setVncStatus('Login successful! Redirecting...');
                             setTimeout(() => navigate('/'), 1000);
                         }
                     } catch (err) {
@@ -74,12 +72,11 @@ export const Login: React.FC = () => {
                 setIsLoading(false);
             }
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to start VNC login');
+            setError(err.response?.data?.detail || 'Failed to start login session');
             setIsLoading(false);
         }
     };
 
-    // Cancel VNC login
     const handleCancelVnc = async () => {
         if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
@@ -93,10 +90,8 @@ export const Login: React.FC = () => {
         setVncStatus('');
     };
 
-    // Manual sessionid login (fallback)
     const handleManualLogin = async () => {
         if (!sessionId.trim()) return;
-
         setError('');
         setIsLoading(true);
 
@@ -121,48 +116,45 @@ export const Login: React.FC = () => {
         }
     };
 
-    // VNC View
+    // Full Screen VNC View
     if (showVnc) {
         return (
-            <div className="min-h-screen bg-black flex flex-col">
-                {/* Header */}
-                <div className="flex-shrink-0 p-4 bg-gray-900 flex items-center justify-between">
+            <div className="fixed inset-0 z-50 bg-black">
+                {/* Floating Control Bar */}
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-gray-900/90 backdrop-blur-md border border-white/10 rounded-full px-6 py-3 flex items-center gap-6 shadow-2xl">
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-gradient-to-r from-cyan-400 to-pink-500 rounded-lg flex items-center justify-center">
-                            <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                            </svg>
-                        </div>
-                        <div>
-                            <p className="text-white text-sm font-medium">Login to TikTok</p>
-                            <p className="text-gray-400 text-xs">{vncStatus}</p>
-                        </div>
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                        <span className="text-white text-sm font-medium">Secure Browser Active</span>
                     </div>
+                    <div className="h-4 w-px bg-white/20" />
                     <button
                         onClick={handleCancelVnc}
-                        className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-medium transition-colors"
+                        className="text-red-400 hover:text-red-300 text-sm font-medium transition-colors"
                     >
-                        Cancel
+                        Cancel Login
                     </button>
                 </div>
 
-                {/* VNC Iframe */}
-                <div className="flex-1" style={{ minHeight: 'calc(100vh - 80px)' }}>
-                    <iframe
-                        src={getVncUrl()}
-                        className="w-full border-0"
-                        style={{ height: 'calc(100vh - 80px)' }}
-                        title="TikTok Login"
-                    />
-                </div>
+                {/* Status Toast */}
+                {vncStatus && (
+                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 bg-black/80 backdrop-blur text-white/90 px-4 py-2 rounded-lg text-sm border border-white/10">
+                        {vncStatus}
+                    </div>
+                )}
+
+                {/* Full Screen Iframe */}
+                <iframe
+                    src={getVncUrl()}
+                    className="w-full h-full border-0"
+                    style={{ width: '100vw', height: '100vh' }}
+                    title="TikTok Secure Login"
+                />
             </div>
         );
     }
 
-    // Login View
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950 flex flex-col">
-            {/* Header */}
             <div className="flex-shrink-0 pt-10 pb-6 px-6 text-center">
                 <div className="relative inline-block mb-3">
                     <div className="w-14 h-14 bg-gradient-to-r from-cyan-400 to-pink-500 rounded-2xl rotate-12 absolute -inset-1 blur-lg opacity-50" />
@@ -176,7 +168,6 @@ export const Login: React.FC = () => {
                 <p className="text-gray-500 text-xs">Ad-free TikTok viewing</p>
             </div>
 
-            {/* Content */}
             <div className="flex-1 overflow-y-auto px-5 pb-8">
                 <div className="max-w-sm mx-auto">
                     {error && (
@@ -185,41 +176,38 @@ export const Login: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Primary: VNC Login Button */}
                     <button
                         onClick={handleVncLogin}
                         disabled={isLoading}
                         className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all ${isLoading
-                            ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-pink-500 to-orange-500 text-white shadow-lg shadow-pink-500/25 hover:shadow-pink-500/40 active:scale-[0.98]'
+                                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-pink-500 to-orange-500 text-white shadow-lg shadow-pink-500/25 hover:shadow-pink-500/40 active:scale-[0.98]'
                             }`}
                     >
                         {isLoading ? (
                             <>
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                {vncStatus || 'Please wait...'}
+                                Starting...
                             </>
                         ) : (
                             <>
                                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                     <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.32 0 .6.05.88.13V9.4c-.3-.04-.6-.05-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
                                 </svg>
-                                Login with TikTok
+                                SSL Login with TikTok
                             </>
                         )}
                     </button>
                     <p className="text-gray-600 text-xs text-center mt-3">
-                        Opens a secure browser window for you to login
+                        Launch secure browser to login automatically
                     </p>
 
-                    {/* Divider */}
                     <div className="flex items-center gap-3 my-8">
                         <div className="flex-1 h-px bg-white/10" />
                         <span className="text-gray-600 text-xs">or enter manually</span>
                         <div className="flex-1 h-px bg-white/10" />
                     </div>
 
-                    {/* Manual Method */}
                     <div className="bg-white/5 rounded-xl p-4">
                         <p className="text-gray-500 text-xs mb-3">
                             Paste your TikTok <code className="text-pink-400 bg-pink-500/20 px-1 rounded">sessionid</code> cookie:
@@ -236,8 +224,8 @@ export const Login: React.FC = () => {
                             onClick={handleManualLogin}
                             disabled={!sessionId.trim() || isLoading}
                             className={`w-full py-2.5 rounded-lg font-medium text-sm transition-all ${sessionId.trim() && !isLoading
-                                ? 'bg-white/10 hover:bg-white/20 text-white'
-                                : 'bg-white/5 text-gray-600 cursor-not-allowed'
+                                    ? 'bg-white/10 hover:bg-white/20 text-white'
+                                    : 'bg-white/5 text-gray-600 cursor-not-allowed'
                                 }`}
                         >
                             Connect
