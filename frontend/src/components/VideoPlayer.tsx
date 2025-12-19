@@ -15,6 +15,8 @@ interface VideoPlayerProps {
     isFollowing?: boolean;
     onFollow?: (author: string) => void;
     onAuthorClick?: (author: string) => void;  // In-app navigation to creator
+    isMuted?: boolean;  // Global mute state from parent
+    onMuteToggle?: () => void;  // Callback to toggle parent mute state
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -22,7 +24,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     isActive,
     isFollowing = false,
     onFollow,
-    onAuthorClick
+    onAuthorClick,
+    isMuted: externalMuted,
+    onMuteToggle
 }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -34,7 +38,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [duration, setDuration] = useState(0);
     const [isSeeking, setIsSeeking] = useState(false);
     const [useFallback, setUseFallback] = useState(false);  // Fallback to full proxy
-    const [isMuted, setIsMuted] = useState(true);  // Start muted for autoplay policy
+    // Use external mute state if provided, otherwise use local state for backward compatibility
+    const [localMuted, setLocalMuted] = useState(true);
+    const isMuted = externalMuted !== undefined ? externalMuted : localMuted;
     const [hearts, setHearts] = useState<HeartParticle[]>([]);
     const lastTapRef = useRef<number>(0);
 
@@ -52,7 +58,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             // Auto-play when becoming active
             if (videoRef.current.paused) {
                 videoRef.current.currentTime = 0;
-                videoRef.current.muted = true;  // Always start muted for autoplay policy
+                videoRef.current.muted = isMuted;  // Use current mute state
                 videoRef.current.play().catch((err) => {
                     // If autoplay fails even muted, show paused state
                     console.log('Autoplay blocked:', err.message);
@@ -64,6 +70,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             videoRef.current.pause();
         }
     }, [isActive]);  // Only trigger on isActive change
+
+    // Sync video muted property when isMuted state changes
+    useEffect(() => {
+        if (videoRef.current) {
+            videoRef.current.muted = isMuted;
+        }
+    }, [isMuted]);
 
     // Spacebar to pause/play when this video is active
     useEffect(() => {
@@ -148,9 +161,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const toggleMute = (e: React.MouseEvent | React.TouchEvent) => {
         e.stopPropagation();  // Prevent video tap
         if (!videoRef.current) return;
-        const newMuted = !videoRef.current.muted;
-        videoRef.current.muted = newMuted;
-        setIsMuted(newMuted);
+
+        // Use external toggle if provided, otherwise use local state
+        if (onMuteToggle) {
+            onMuteToggle();
+        } else {
+            setLocalMuted(prev => !prev);
+        }
     };
 
     // Handle tap - double tap shows heart, single tap toggles play

@@ -73,6 +73,9 @@ export const Feed: React.FC = () => {
     const [searchResults, setSearchResults] = useState<Video[]>([]);
     const [isSearching, setIsSearching] = useState(false);
 
+    // Global mute state - persists across video scrolling
+    const [isMuted, setIsMuted] = useState(true);
+
     // ========== SWIPE LOGIC ==========
     const touchStart = useRef<number | null>(null);
     const touchEnd = useRef<number | null>(null);
@@ -655,8 +658,8 @@ export const Feed: React.FC = () => {
                             onClick={handleJsonLogin}
                             disabled={!jsonInput.trim()}
                             className={`w-full py-4 text-white font-semibold rounded-2xl transition-all transform active:scale-[0.98] shadow-lg text-base ${jsonInput.trim()
-                                    ? 'bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-400 hover:to-pink-400 shadow-pink-500/20'
-                                    : 'bg-gray-700 cursor-not-allowed'
+                                ? 'bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-400 hover:to-pink-400 shadow-pink-500/20'
+                                : 'bg-gray-700 cursor-not-allowed'
                                 }`}
                         >
                             Connect to TikTok
@@ -826,6 +829,8 @@ export const Feed: React.FC = () => {
                                     isFollowing={following.includes(video.author)}
                                     onFollow={handleFollow}
                                     onAuthorClick={(author) => searchByUsername(author)}
+                                    isMuted={isMuted}
+                                    onMuteToggle={() => setIsMuted(prev => !prev)}
                                 />
                             ) : (
                                 /* Lightweight Placeholder */
