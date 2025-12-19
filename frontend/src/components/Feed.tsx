@@ -457,6 +457,7 @@ export const Feed: React.FC = () => {
     };
 
     // Direct username search - bypasses state update delay
+    // Falls back to keyword search if user not found
     const searchByUsername = async (username: string) => {
         setSearchInput(`@${username}`);
         setActiveTab('search');
@@ -470,23 +471,44 @@ export const Feed: React.FC = () => {
             if (userVideos.length > 0) {
                 setSearchResults(userVideos);
             } else {
-                setSearchResults([{
-                    id: `no-videos-${username}`,
-                    url: '',
-                    author: username,
-                    description: `No videos found for @${username}`
-                }]);
+                // No videos from user profile, try keyword search
+                console.log(`No videos from @${username}, trying keyword search...`);
+                await fallbackToKeywordSearch(username);
             }
         } catch (err) {
-            console.error('Error fetching user videos:', err);
-            setSearchResults([{
-                id: `error-${username}`,
-                url: '',
-                author: username,
-                description: `Could not fetch videos`
-            }]);
+            console.error('Error fetching user videos, trying keyword search:', err);
+            // User not found or error - fallback to keyword search
+            await fallbackToKeywordSearch(username);
         } finally {
             setIsSearching(false);
+        }
+    };
+
+    // Fallback search when user profile fails
+    const fallbackToKeywordSearch = async (keyword: string) => {
+        try {
+            const res = await axios.get(`${API_BASE_URL}/user/search?query=${encodeURIComponent(keyword)}&limit=12`);
+            const searchVideos = res.data.videos as Video[];
+
+            if (searchVideos.length > 0) {
+                setSearchResults(searchVideos);
+            } else {
+                // Still no results - show friendly message
+                setSearchResults([{
+                    id: `no-results-${keyword}`,
+                    url: '',
+                    author: 'search',
+                    description: `No videos found for "${keyword}". Try a different search term.`
+                }]);
+            }
+        } catch (searchErr) {
+            console.error('Keyword search also failed:', searchErr);
+            setSearchResults([{
+                id: `search-error`,
+                url: '',
+                author: 'search',
+                description: `Search is temporarily unavailable. Please try again later.`
+            }]);
         }
     };
 
