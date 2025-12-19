@@ -148,7 +148,7 @@ class PlaywrightManager:
             
             cls._vnc_context = await cls._vnc_browser.new_context(
                 user_agent=cls.DEFAULT_USER_AGENT,
-                viewport={"width": 1200, "height": 750}
+                viewport={"width": 1920, "height": 1000}
             )
             
             cls._vnc_page = await cls._vnc_context.new_page()

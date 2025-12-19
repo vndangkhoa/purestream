@@ -147,10 +147,11 @@ export const Login: React.FC = () => {
                 </div>
 
                 {/* VNC Iframe */}
-                <div className="flex-1 bg-gray-900">
+                <div className="flex-1" style={{ minHeight: 'calc(100vh - 80px)' }}>
                     <iframe
                         src={getVncUrl()}
-                        className="w-full h-full border-0"
+                        className="w-full border-0"
+                        style={{ height: 'calc(100vh - 80px)' }}
                         title="TikTok Login"
                     />
                 </div>
@@ -189,8 +190,8 @@ export const Login: React.FC = () => {
                         onClick={handleVncLogin}
                         disabled={isLoading}
                         className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all ${isLoading
-                                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                                : 'bg-gradient-to-r from-pink-500 to-orange-500 text-white shadow-lg shadow-pink-500/25 hover:shadow-pink-500/40 active:scale-[0.98]'
+                            ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-pink-500 to-orange-500 text-white shadow-lg shadow-pink-500/25 hover:shadow-pink-500/40 active:scale-[0.98]'
                             }`}
                     >
                         {isLoading ? (
@@ -235,8 +236,8 @@ export const Login: React.FC = () => {
                             onClick={handleManualLogin}
                             disabled={!sessionId.trim() || isLoading}
                             className={`w-full py-2.5 rounded-lg font-medium text-sm transition-all ${sessionId.trim() && !isLoading
-                                    ? 'bg-white/10 hover:bg-white/20 text-white'
-                                    : 'bg-white/5 text-gray-600 cursor-not-allowed'
+                                ? 'bg-white/10 hover:bg-white/20 text-white'
+                                : 'bg-white/5 text-gray-600 cursor-not-allowed'
                                 }`}
                         >
                             Connect
