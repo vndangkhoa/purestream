@@ -148,9 +148,11 @@ purestream/
 
 ## 🔐 Authentication (Admin Setup)
 
-PureStream uses your TikTok session cookies. Once configured, users can access the feed without logging in.
+PureStream uses your TikTok session cookies. Once configured by the admin, **all users can access the feed without logging in** - on desktop or mobile.
 
-### First-Time Setup
+> **Important**: Admin setup should be done from a **desktop/laptop computer** (not a phone) because you need a browser extension to export cookies.
+
+### First-Time Setup (Desktop Required)
 
 1. **Set your admin password** in `docker-compose.yml`:
    ```yaml
@@ -158,27 +160,40 @@ PureStream uses your TikTok session cookies. Once configured, users can access t
      - ADMIN_PASSWORD=your_secure_password
    ```
 
-2. **Access the admin page**: `http://your-server-ip:8002/admin`
+2. **Start/restart the container**:
+   ```bash
+   docker-compose up -d --force-recreate
+   ```
 
-3. **Get your TikTok cookies**:
+3. **Access the admin page**: `http://your-server-ip:8002/admin`
+   - Enter your admin password (default: `admin123`)
+
+4. **Get your TikTok cookies** (from a desktop browser):
    - Install [Cookie-Editor](https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm) browser extension
-   - Go to [tiktok.com](https://www.tiktok.com) and login
+   - Go to [tiktok.com](https://www.tiktok.com) and login to your account
    - Click Cookie-Editor icon → **Export** → **Copy**
 
-4. **Paste cookies** in the admin page and click **Save**
+5. **Paste cookies** in the admin page text area and click **Save Cookies**
 
-5. Your app is now ready! Access `http://your-server-ip:8002/` on any device.
+6. ✅ **Done!** Now anyone can access `http://your-server-ip:8002/` on any device (including phones)
+
+### For Mobile Users
+
+Regular users don't need to do anything - just open the app URL in their phone browser. The admin (you) configures cookies once, and everyone benefits.
+
+> If you only have a phone: On Android, use **Kiwi Browser** which supports Chrome extensions. On iOS, you'll need access to a desktop computer.
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ADMIN_PASSWORD` | `admin123` | Password for admin page |
+| `ADMIN_PASSWORD` | `admin123` | Password for `/admin` page |
 | `CACHE_DIR` | `/app/cache` | Video cache directory |
 | `MAX_CACHE_SIZE_MB` | `500` | Maximum cache size |
 | `CACHE_TTL_HOURS` | `24` | Cache expiration |
 
-> **Security Note**: Cookies are stored locally in the `session/` volume. Anyone with admin access can view/update them.
+> **Security Note**: Cookies are stored locally in the `session/` volume. Anyone with the admin password can view/update them.
+
 
 ## 🐛 Troubleshooting
 
