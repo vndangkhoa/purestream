@@ -253,26 +253,27 @@ async def fetch_profiles_with_avatars(accounts: list, cookies: list, user_agent:
 
 
 def get_fallback_accounts():
-    """Static fallback list of popular Vietnamese TikTokers."""
+    """Static fallback list of popular Vietnamese TikTokers (verified usernames)."""
     return [
-        {"username": "ciin_rubi", "nickname": "👑 CiiN - Lisa of Vietnam", "region": "VN"},
+        # Verified Vietnamese TikTok accounts
+        {"username": "cciinnn", "nickname": "👑 CiiN (Bùi Thảo Ly)", "region": "VN"},
         {"username": "hoaa.hanassii", "nickname": "💃 Hoa Hanassii", "region": "VN"},
-        {"username": "hoa_2309", "nickname": "🔥 Ngô Ngọc Hòa", "region": "VN"},
-        {"username": "minah.ne", "nickname": "🎵 Minah", "region": "VN"},
         {"username": "lebong95", "nickname": "💪 Lê Bống", "region": "VN"},
-        {"username": "po.trann77", "nickname": "✨ Trần Thanh Tâm", "region": "VN"},
-        {"username": "gamkami", "nickname": "🎱 Gấm Kami", "region": "VN"},
-        {"username": "quynhalee", "nickname": "🎮 Quỳnh Alee", "region": "VN"},
         {"username": "tieu_hy26", "nickname": "👰 Tiểu Hý", "region": "VN"},
-        {"username": "changmie", "nickname": "🎤 Changmie", "region": "VN"},
-        {"username": "vuthuydien", "nickname": "😄 Vũ Thụy Điển", "region": "VN"},
-        {"username": "thienantv", "nickname": "😂 Thiên An TV", "region": "VN"},
-        {"username": "amee_official", "nickname": "🎵 AMEE", "region": "VN"},
-        {"username": "sontungmtp_official", "nickname": "🎤 Sơn Tùng M-TP", "region": "VN"},
-        {"username": "hieuthuhai_", "nickname": "🎧 HIEUTHUHAI", "region": "VN"},
-        {"username": "mck.99", "nickname": "🔥 MCK", "region": "VN"},
-        {"username": "tranducbo", "nickname": "😄 Trần Đức Bo", "region": "VN"},
-        {"username": "call.me.duy", "nickname": "🎭 Call Me Duy", "region": "VN"},
-        {"username": "mai_ngok", "nickname": "💕 Mai Ngok", "region": "VN"},
-        {"username": "thanhtrungdam", "nickname": "🎤 Đàm Thanh Trung", "region": "VN"},
+        {"username": "hieuthuhai2222", "nickname": "🎧 HIEUTHUHAI", "region": "VN"},
+        {"username": "mtp.fan", "nickname": "🎤 Sơn Tùng M-TP", "region": "VN"},
+        {"username": "changmakeup", "nickname": "💄 Changmakeup", "region": "VN"},
+        {"username": "theanh28entertainment", "nickname": "🎬 Theanh28", "region": "VN"},
+        {"username": "linhbarbie", "nickname": "👗 Linh Barbie", "region": "VN"},
+        {"username": "phuonglykchau", "nickname": "✨ Phương Ly", "region": "VN"},
+        {"username": "phimtieutrang", "nickname": "📺 Tiểu Trang", "region": "VN"},
+        {"username": "nhunguyendy", "nickname": "💕 Như Nguyễn", "region": "VN"},
+        {"username": "trucnhantv", "nickname": "🎤 Trúc Nhân", "region": "VN"},
+        {"username": "justvietanh", "nickname": "😄 Just Việt Anh", "region": "VN"},
+        {"username": "minngu.official", "nickname": "🌸 Min NGU", "region": "VN"},
+        {"username": "quangdangofficial", "nickname": "🕺 Quang Đăng", "region": "VN"},
+        {"username": "minhhangofficial", "nickname": "👑 Minh Hằng", "region": "VN"},
+        {"username": "dungntt", "nickname": "🎭 Dũng NTT", "region": "VN"},
+        {"username": "chipu88", "nickname": "🎤 Chi Pu", "region": "VN"},
+        {"username": "kaydinh", "nickname": "🎵 Kay Dinh", "region": "VN"},
     ]
