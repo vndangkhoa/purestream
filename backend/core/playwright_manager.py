@@ -25,8 +25,14 @@ class PlaywrightManager:
     BROWSER_ARGS = [
         "--disable-blink-features=AutomationControlled",
         "--no-sandbox",
+        "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
-        "--start-maximized",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
+        "--kiosk",  # Force full screen mode
+        "--start-maximized"
     ]
     
     DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
