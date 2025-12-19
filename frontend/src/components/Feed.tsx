@@ -1090,12 +1090,28 @@ export const Feed: React.FC = () => {
                                         </button>
                                     )}
                                 </div>
-                                <button
-                                    onClick={() => setSearchResults([])}
-                                    className="text-white/30 text-xs hover:text-white/60"
-                                >
-                                    Clear
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    {/* Play All Button */}
+                                    <button
+                                        onClick={() => {
+                                            const playableVideos = searchResults.filter(v => v.url);
+                                            if (playableVideos.length > 0) {
+                                                setVideos(playableVideos);
+                                                setCurrentIndex(0);
+                                                setActiveTab('foryou');
+                                            }
+                                        }}
+                                        className="px-3 py-1 bg-gradient-to-r from-cyan-500 to-pink-500 rounded-full text-xs font-medium text-white"
+                                    >
+                                        ▶ Play All
+                                    </button>
+                                    <button
+                                        onClick={() => setSearchResults([])}
+                                        className="text-white/30 text-xs hover:text-white/60"
+                                    >
+                                        Clear
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Video Grid */}
@@ -1109,9 +1125,15 @@ export const Feed: React.FC = () => {
                                             }`}
                                         onClick={() => {
                                             if (!video.url) return;
-                                            setVideos(prev => [video, ...prev.filter(v => v.id !== video.id)]);
-                                            setCurrentIndex(0);
-                                            setActiveTab('foryou');
+                                            // Load ALL search results into the feed, starting from clicked video
+                                            const playableVideos = searchResults.filter(v => v.url);
+                                            if (playableVideos.length > 0) {
+                                                setVideos(playableVideos);
+                                                // Set current index to the clicked video's position in playable videos
+                                                const newIndex = playableVideos.findIndex(v => v.id === video.id);
+                                                setCurrentIndex(newIndex >= 0 ? newIndex : 0);
+                                                setActiveTab('foryou');
+                                            }
                                         }}
                                     >
                                         {/* Thumbnail with loading placeholder */}
