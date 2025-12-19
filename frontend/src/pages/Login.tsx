@@ -29,15 +29,10 @@ export const Login: React.FC = () => {
         }
     };
 
-    // Loading state
+    // Loading state - brief, no spinner needed
     if (isChecking) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950 flex items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-white/20 border-t-cyan-400 rounded-full animate-spin" />
-                    <span className="text-white/60 text-sm">Checking session...</span>
-                </div>
-            </div>
+            <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950" />
         );
     }
 

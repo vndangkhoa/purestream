@@ -316,12 +316,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 onPlaying={() => setIsLoading(false)}
             />
 
-            {/* Loading Spinner Overlay */}
+            {/* Loading Overlay - Subtle pulsing logo */}
             {isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20">
-                    <div className="flex flex-col items-center gap-4">
-                        <div className="w-12 h-12 border-4 border-white/20 border-t-cyan-400 rounded-full animate-spin" />
-                        <span className="text-white/60 text-sm">Loading...</span>
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-20">
+                    <div className="w-16 h-16 bg-gradient-to-r from-cyan-400/80 to-pink-500/80 rounded-2xl flex items-center justify-center animate-pulse">
+                        <svg className="w-8 h-8 text-white" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                        </svg>
                     </div>
                 </div>
             )}
