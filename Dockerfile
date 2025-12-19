@@ -55,6 +55,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpixman-1-0 \
     libxfont2 \
     libxkbfile1 \
+    libdatetime-perl \
+    libwww-perl \
     xfonts-base \
     xfonts-75dpi \
     xfonts-100dpi \
