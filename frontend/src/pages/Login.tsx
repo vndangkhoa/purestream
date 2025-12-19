@@ -35,8 +35,8 @@ export const Login: React.FC = () => {
 
     const getVncUrl = () => {
         const host = window.location.hostname;
-        // autoconnect=true, resize=scale to fit, quality=9 for clear text
-        return `http://${host}:6080/vnc.html?autoconnect=true&resize=scale&quality=9`;
+        // KasmVNC params: autoconnect=1, resize=scale (fit to screen), negotiate items
+        return `http://${host}:6080/vnc.html?autoconnect=1&resize=scale&encrypt=0`;
     };
 
     const handleVncLogin = async () => {
@@ -180,8 +180,8 @@ export const Login: React.FC = () => {
                         onClick={handleVncLogin}
                         disabled={isLoading}
                         className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all ${isLoading
-                                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                                : 'bg-gradient-to-r from-pink-500 to-orange-500 text-white shadow-lg shadow-pink-500/25 hover:shadow-pink-500/40 active:scale-[0.98]'
+                            ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-pink-500 to-orange-500 text-white shadow-lg shadow-pink-500/25 hover:shadow-pink-500/40 active:scale-[0.98]'
                             }`}
                     >
                         {isLoading ? (
@@ -224,8 +224,8 @@ export const Login: React.FC = () => {
                             onClick={handleManualLogin}
                             disabled={!sessionId.trim() || isLoading}
                             className={`w-full py-2.5 rounded-lg font-medium text-sm transition-all ${sessionId.trim() && !isLoading
-                                    ? 'bg-white/10 hover:bg-white/20 text-white'
-                                    : 'bg-white/5 text-gray-600 cursor-not-allowed'
+                                ? 'bg-white/10 hover:bg-white/20 text-white'
+                                : 'bg-white/5 text-gray-600 cursor-not-allowed'
                                 }`}
                         >
                             Connect
