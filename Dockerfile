@@ -64,6 +64,9 @@ RUN mkdir -p /app/cache && chmod 777 /app/cache
 ENV PYTHONUNBUFFERED=1
 ENV CACHE_DIR=/app/cache
 
+# Set working directory to backend for correct imports
+WORKDIR /app/backend
+
 # Expose port
 EXPOSE 8002
 
@@ -72,4 +75,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8002/health || exit 1
 
 # Start the application with xvfb for headless browser support
-CMD ["sh", "-c", "xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' python -m uvicorn backend.main:app --host 0.0.0.0 --port 8002"]
+CMD ["sh", "-c", "xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' python -m uvicorn main:app --host 0.0.0.0 --port 8002"]
+
