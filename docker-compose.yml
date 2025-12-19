@@ -7,7 +7,6 @@ services:
     restart: unless-stopped
     ports:
       - "8002:8002"
-      - "6080:6080"
     volumes:
       - ./cache:/app/cache
       - ./session:/app/backend/session
@@ -16,6 +15,7 @@ services:
       - CACHE_DIR=/app/cache
       - MAX_CACHE_SIZE_MB=500
       - CACHE_TTL_HOURS=24
+      - ADMIN_PASSWORD=admin123 # Change this to your secure password
     shm_size: '2gb'
     # IMPORTANT: You must link the service to the network
     networks:

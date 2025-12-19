@@ -146,15 +146,39 @@ purestream/
 └── README.md
 ```
 
-## 🔐 Authentication
+## 🔐 Authentication (Admin Setup)
 
-PureStream uses your TikTok session to fetch content. On first launch:
+PureStream uses your TikTok session cookies. Once configured, users can access the feed without logging in.
 
-1. Click **"Login with TikTok"**
-2. A browser window opens - log in to TikTok normally
-3. Your session is saved locally for future use
+### First-Time Setup
 
-> **Note**: Your credentials are stored locally and never sent to any external server.
+1. **Set your admin password** in `docker-compose.yml`:
+   ```yaml
+   environment:
+     - ADMIN_PASSWORD=your_secure_password
+   ```
+
+2. **Access the admin page**: `http://your-server-ip:8002/admin`
+
+3. **Get your TikTok cookies**:
+   - Install [Cookie-Editor](https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm) browser extension
+   - Go to [tiktok.com](https://www.tiktok.com) and login
+   - Click Cookie-Editor icon → **Export** → **Copy**
+
+4. **Paste cookies** in the admin page and click **Save**
+
+5. Your app is now ready! Access `http://your-server-ip:8002/` on any device.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ADMIN_PASSWORD` | `admin123` | Password for admin page |
+| `CACHE_DIR` | `/app/cache` | Video cache directory |
+| `MAX_CACHE_SIZE_MB` | `500` | Maximum cache size |
+| `CACHE_TTL_HOURS` | `24` | Cache expiration |
+
+> **Security Note**: Cookies are stored locally in the `session/` volume. Anyone with admin access can view/update them.
 
 ## 🐛 Troubleshooting
 

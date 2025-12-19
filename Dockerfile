@@ -9,17 +9,13 @@ RUN npm run build
 # Production stage
 FROM python:3.11-slim
 
-# Install system dependencies
+# Install system dependencies (minimal - no VNC needed)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     curl \
     gnupg \
     ca-certificates \
     ffmpeg \
-    # VNC & Display dependencies
-    tigervnc-standalone-server \
-    tigervnc-common \
-    openbox \
     # Playwright dependencies
     libnss3 \
     libnspr4 \
@@ -39,22 +35,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatspi2.0-0 \
     libgtk-3-0 \
     fonts-liberation \
-    supervisor \
     && rm -rf /var/lib/apt/lists/*
-
-# Install noVNC
-RUN mkdir -p /opt/novnc \
-    && wget -qO- https://github.com/novnc/noVNC/archive/v1.4.0.tar.gz | tar xz -C /opt/novnc --strip-components=1 \
-    && mkdir -p /opt/novnc/utils/websockify \
-    && wget -qO- https://github.com/novnc/websockify/archive/v0.11.0.tar.gz | tar xz -C /opt/novnc/utils/websockify --strip-components=1 \
-    && ln -s /opt/novnc/vnc.html /opt/novnc/index.html
 
 WORKDIR /app
 
 # Copy backend requirements and install
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-# Install Playwright browsers
+
+# Install Playwright browsers (headless mode only)
 RUN mkdir -p /root/.cache/ms-playwright && \
     for i in 1 2 3; do \
     playwright install chromium && break || \
@@ -67,26 +56,22 @@ COPY backend/ ./backend/
 # Copy built frontend
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# Create cache directory
-RUN mkdir -p /app/cache && chmod 777 /app/cache
-
-# Copy supervisor config
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+# Create cache and session directories
+RUN mkdir -p /app/cache /app/session && chmod 777 /app/cache /app/session
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1
 ENV CACHE_DIR=/app/cache
-ENV DISPLAY=:99
 
 # Set working directory to backend for correct imports
 WORKDIR /app/backend
 
-# Expose ports (8002 = app, 6080 = noVNC)
-EXPOSE 8002 6080
+# Expose port (8002 = app)
+EXPOSE 8002
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8002/health || exit 1
 
-# Start services
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Start FastAPI directly (no supervisor needed)
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]

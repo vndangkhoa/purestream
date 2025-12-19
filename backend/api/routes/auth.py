@@ -142,3 +142,99 @@ async def stop_vnc_login():
     """Stop the VNC login browser."""
     result = await PlaywrightManager.stop_vnc_login()
     return result
+
+
+# ========== ADMIN ENDPOINTS ==========
+
+# Admin password from environment variable
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+
+# Simple in-memory admin sessions (resets on restart, that's fine for this use case)
+_admin_sessions: set = set()
+
+
+class AdminLoginRequest(BaseModel):
+    password: str
+
+
+class AdminCookiesRequest(BaseModel):
+    cookies: list | dict  # Accept both array (Cookie-Editor) or object format
+
+
+@router.post("/admin-login")
+async def admin_login(request: AdminLoginRequest):
+    """Login as admin with password."""
+    if request.password == ADMIN_PASSWORD:
+        import secrets
+        session_token = secrets.token_urlsafe(32)
+        _admin_sessions.add(session_token)
+        return {"status": "success", "token": session_token}
+    raise HTTPException(status_code=401, detail="Invalid password")
+
+
+@router.get("/admin-check")
+async def admin_check(token: str = ""):
+    """Check if admin session is valid."""
+    return {"valid": token in _admin_sessions}
+
+
+@router.post("/admin-update-cookies")
+async def admin_update_cookies(request: AdminCookiesRequest, token: str = ""):
+    """Update cookies (admin only)."""
+    if token not in _admin_sessions:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        cookies = request.cookies
+        
+        # Normalize cookies to dict format
+        if isinstance(cookies, list):
+            # Cookie-Editor export format: [{"name": "...", "value": "..."}, ...]
+            cookie_dict = {}
+            for c in cookies:
+                if isinstance(c, dict) and "name" in c and "value" in c:
+                    cookie_dict[c["name"]] = c["value"]
+            cookies = cookie_dict
+        
+        if not isinstance(cookies, dict):
+            raise HTTPException(status_code=400, detail="Invalid cookies format")
+        
+        if "sessionid" not in cookies:
+            raise HTTPException(status_code=400, detail="Missing 'sessionid' cookie - this is required")
+        
+        # Save cookies
+        PlaywrightManager.save_credentials(cookies, None)
+        
+        return {
+            "status": "success",
+            "message": f"Saved {len(cookies)} cookies",
+            "cookie_count": len(cookies)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/admin-get-cookies")
+async def admin_get_cookies(token: str = ""):
+    """Get current cookies (admin only, for display)."""
+    if token not in _admin_sessions:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    if os.path.exists(COOKIES_FILE):
+        try:
+            with open(COOKIES_FILE, "r") as f:
+                cookies = json.load(f)
+                # Mask sensitive values for display
+                masked = {}
+                for key, value in cookies.items():
+                    if key == "sessionid":
+                        masked[key] = value[:8] + "..." + value[-4:] if len(value) > 12 else "***"
+                    else:
+                        masked[key] = value[:20] + "..." if len(str(value)) > 20 else value
+                return {"cookies": masked, "raw_count": len(cookies)}
+        except:
+            pass
+    return {"cookies": {}, "raw_count": 0}
+
