@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  purestream:
+    image: vndangkhoa/purestream:latest
+    container_name: purestream
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    volumes:
+      # Persist video cache
+      - purestream_cache:/app/cache
+      # Persist login session (optional - for persistent TikTok login)
+      - purestream_session:/app/backend/session
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CACHE_DIR=/app/cache
+      - MAX_CACHE_SIZE_MB=500
+      - CACHE_TTL_HOURS=24
+    # Required for Playwright browser
+    shm_size: '2gb'
+    # Security: run as non-root (optional)
+    # user: "1000:1000"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8002/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  purestream_cache:
+    driver: local
+  purestream_session:
+    driver: local

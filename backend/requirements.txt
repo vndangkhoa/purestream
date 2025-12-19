@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+yt-dlp
+requests
+python-multipart
+websockets
+python-dotenv
+crawl4ai

@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Build outputs
+frontend/dist/
+*.egg-info/
+
+# Cache
+cache/
+*.cache
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Session data (sensitive)
+backend/session/
+*.session
+backend/cookies.json
+backend/cookies_netscape.txt
+backend/session_metadata.json
+backend/user_agent.json
+
+# Downloads (large files)
+backend/downloads/
+downloads/
+
+# Debug files
+backend/debug_*.html
+
+# Playwright
+playwright-report/
+test-results/
+
+# Test files
+backend/test_*.py
+

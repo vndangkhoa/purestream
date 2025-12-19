@@ -1,0 +1,15 @@
+node_modules/
+venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+*.log
+*.md
+.DS_Store
+.vscode/
+.idea/
+cache/
+backend/session/
+playwright-report/
+test-results/
