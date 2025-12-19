@@ -233,7 +233,7 @@ async def proxy_video(
         cookie_file_path = cookie_file.name
     
     # Prefer H.264 (avc1) over HEVC (hvc1/hev1) for browser compatibility
-    # Format selection: prefer mp4 with h264, fallback to best mp4, then re-encode if HEVC
+    # Format selection: prefer mp4 with h264, fallback to best mp4
     ydl_opts = {
         'format': 'best[ext=mp4][vcodec^=avc]/best[ext=mp4]/best',  # Prefer H.264
         'outtmpl': output_template,
@@ -259,7 +259,7 @@ async def proxy_video(
                 info = ydl.extract_info(url, download=True)
                 ext = info.get('ext', 'mp4')
                 # Get codec info
-                vcodec = info.get('vcodec', 'unknown')
+                vcodec = info.get('vcodec', '') or ''
                 return os.path.join(temp_dir, f"video.{ext}"), vcodec
         
         video_path, video_codec = await loop.run_in_executor(None, download_video)
@@ -270,7 +270,21 @@ async def proxy_video(
         print(f"Downloaded codec: {video_codec}")
         
         # Check if we need to re-encode HEVC to H.264
-        is_hevc = video_codec and any(x in video_codec.lower() for x in ['hevc', 'hev1', 'hvc1', 'h265', 'h.265'])
+        # If codec unknown, probe the actual file
+        is_hevc = False
+        if video_codec:
+            is_hevc = any(x in video_codec.lower() for x in ['hevc', 'hev1', 'hvc1', 'h265', 'h.265'])
+        else:
+            # Try probing with yt-dlp's ffprobe
+            try:
+                probe_cmd = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', 
+                            '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', video_path]
+                probe_result = subprocess.run(probe_cmd, capture_output=True, timeout=10)
+                detected_codec = probe_result.stdout.decode().strip().lower()
+                is_hevc = 'hevc' in detected_codec or 'h265' in detected_codec
+                print(f"Probed codec: {detected_codec}")
+            except Exception as probe_err:
+                print(f"Probe failed: {probe_err}")
         
         if is_hevc:
             print(f"HEVC detected, re-encoding to H.264 for browser compatibility...")
@@ -288,11 +302,25 @@ async def proxy_video(
                     '-movflags', '+faststart',  # Web optimization
                     h264_path
                 ]
-                result = subprocess.run(cmd, capture_output=True, timeout=120)
-                if result.returncode != 0:
-                    print(f"FFmpeg error: {result.stderr.decode()[:200]}")
-                    return None
-                return h264_path
+                try:
+                    result = subprocess.run(cmd, capture_output=True, timeout=120)
+                    if result.returncode != 0:
+                        print(f"FFmpeg error: {result.stderr.decode()[:200]}")
+                        return None
+                    return h264_path
+                except FileNotFoundError:
+                    print("FFmpeg not installed, trying yt-dlp postprocessor...")
+                    # Fallback: re-download with recode postprocessor
+                    recode_opts = ydl_opts.copy()
+                    recode_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
+                    recode_opts['postprocessor_args'] = ['-c:v', 'libx264', '-preset', 'fast', '-crf', '23']
+                    recode_opts['outtmpl'] = h264_path.replace('.mp4', '.%(ext)s')
+                    try:
+                        with yt_dlp.YoutubeDL(recode_opts) as ydl:
+                            ydl.download([url])
+                        return h264_path if os.path.exists(h264_path) else None
+                    except:
+                        return None
             
             reencoded_path = await loop.run_in_executor(None, reencode_to_h264)
             
@@ -300,7 +328,7 @@ async def proxy_video(
                 video_path = reencoded_path
                 print("Re-encoding successful!")
             else:
-                print("Re-encoding failed, using original HEVC (may not play in all browsers)")
+                print("Re-encoding failed, using original video")
         
         # Save to cache for future requests
         cached_path = save_to_cache(url, video_path)
