@@ -1,15 +1,42 @@
+# Dependencies
 node_modules/
+backend/venv/
 venv/
 __pycache__/
 *.pyc
+
+# Git
 .git/
 .gitignore
+
+# Logs and temp
 *.log
 *.md
 .DS_Store
+
+# IDE
 .vscode/
 .idea/
+
+# Cache and session
 cache/
+backend/cache/
 backend/session/
+backend/downloads/
+
+# Sensitive files
+backend/cookies.json
+backend/cookies_netscape.txt
+backend/session_metadata.json
+backend/user_agent.json
+backend/.env
+.env
+
+# Test files
+backend/test_*.py
+backend/debug_*.html
 playwright-report/
 test-results/
+
+# Frontend build (we copy from npm build)
+frontend/node_modules/

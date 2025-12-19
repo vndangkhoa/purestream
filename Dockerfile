@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgtk-3-0 \
     fonts-liberation \
     xvfb \
+    xauth \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -43,9 +44,12 @@ WORKDIR /app
 # Copy backend requirements and install
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install Playwright browsers
-RUN playwright install chromium
+# Install Playwright browsers with retries
+RUN mkdir -p /root/.cache/ms-playwright && \
+    for i in 1 2 3; do \
+    playwright install chromium && break || \
+    (echo "Retry $i..." && rm -rf /root/.cache/ms-playwright/__dirlock && sleep 5); \
+    done
 
 # Copy backend code
 COPY backend/ ./backend/
