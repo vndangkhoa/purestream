@@ -773,6 +773,100 @@ class PlaywrightManager:
         print(f"DEBUG: Total captured search videos: {len(captured_videos)}")
         return captured_videos
 
+    @staticmethod
+    async def fetch_suggested_accounts(cookies: list, user_agent: str = None, limit: int = 50) -> list:
+        """
+        Fetch trending/suggested accounts from TikTok Vietnam.
+        Uses the discover/creators API.
+        """
+        from playwright.async_api import async_playwright, Response
+        
+        if not user_agent:
+            user_agent = PlaywrightManager.DEFAULT_USER_AGENT
+        
+        captured_accounts = []
+        
+        async def handle_response(response: Response):
+            """Capture suggested accounts from API responses."""
+            nonlocal captured_accounts
+            
+            url = response.url
+            
+            # Look for suggest/discover APIs
+            if any(x in url for x in ["suggest", "discover", "recommend/user", "creator"]):
+                try:
+                    data = await response.json()
+                    
+                    # Different API formats
+                    users = data.get("userList", []) or data.get("users", []) or data.get("data", [])
+                    
+                    for item in users:
+                        user_data = item.get("user", item) if isinstance(item, dict) else item
+                        if isinstance(user_data, dict):
+                            username = user_data.get("uniqueId") or user_data.get("unique_id")
+                            if username:
+                                captured_accounts.append({
+                                    "username": username,
+                                    "nickname": user_data.get("nickname", username),
+                                    "avatar": user_data.get("avatarThumb") or user_data.get("avatar"),
+                                    "followers": user_data.get("followerCount", 0),
+                                    "verified": user_data.get("verified", False),
+                                    "region": "VN"
+                                })
+                    
+                    if users:
+                        print(f"DEBUG: Captured {len(users)} suggested accounts")
+                        
+                except Exception as e:
+                    pass  # Ignore parse errors
+        
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=PlaywrightManager.BROWSER_ARGS
+            )
+            
+            context = await browser.new_context(
+                user_agent=user_agent,
+                locale="vi-VN",  # Vietnamese locale
+                timezone_id="Asia/Ho_Chi_Minh"
+            )
+            await context.add_cookies(cookies)
+            
+            page = await context.new_page()
+            await stealth_async(page)
+            page.on("response", handle_response)
+            
+            try:
+                # Navigate to TikTok explore/discover page (Vietnam)
+                await page.goto("https://www.tiktok.com/explore?lang=vi-VN", wait_until="networkidle", timeout=30000)
+                await asyncio.sleep(3)
+                
+                # Also try the For You page to capture suggested
+                await page.goto("https://www.tiktok.com/foryou?lang=vi-VN", wait_until="domcontentloaded", timeout=15000)
+                await asyncio.sleep(2)
+                
+                # Scroll to trigger more suggestions
+                for _ in range(3):
+                    await page.evaluate("window.scrollBy(0, 800)")
+                    await asyncio.sleep(1)
+                
+            except Exception as e:
+                print(f"DEBUG: Error fetching suggested accounts: {e}")
+            
+            await browser.close()
+        
+        # Remove duplicates by username
+        seen = set()
+        unique_accounts = []
+        for acc in captured_accounts:
+            if acc["username"] not in seen:
+                seen.add(acc["username"])
+                unique_accounts.append(acc)
+        
+        print(f"DEBUG: Total unique suggested accounts: {len(unique_accounts)}")
+        return unique_accounts[:limit]
+
 
 # Singleton instance
 playwright_manager = PlaywrightManager()

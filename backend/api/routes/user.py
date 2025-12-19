@@ -156,3 +156,76 @@ async def search_videos(
         print(f"Error searching for {query}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# Cache for suggested accounts
+_suggested_cache = {
+    "accounts": [],
+    "updated_at": 0
+}
+CACHE_TTL = 3600  # 1 hour cache
+
+
+@router.get("/suggested")
+async def get_suggested_accounts(
+    limit: int = Query(50, description="Max accounts to return", ge=10, le=100)
+):
+    """
+    Fetch trending/suggested Vietnamese TikTok creators.
+    Uses TikTok's discover API and caches results for 1 hour.
+    """
+    import time
+    
+    # Check cache
+    if _suggested_cache["accounts"] and (time.time() - _suggested_cache["updated_at"]) < CACHE_TTL:
+        print("Returning cached suggested accounts")
+        return {"accounts": _suggested_cache["accounts"][:limit], "cached": True}
+    
+    # Load stored credentials
+    cookies, user_agent = PlaywrightManager.load_stored_credentials()
+    
+    if not cookies:
+        # Return fallback static list if not authenticated
+        return {"accounts": get_fallback_accounts()[:limit], "cached": False, "fallback": True}
+    
+    print("Fetching fresh suggested accounts from TikTok...")
+    
+    try:
+        accounts = await PlaywrightManager.fetch_suggested_accounts(cookies, user_agent, limit)
+        
+        if accounts:
+            _suggested_cache["accounts"] = accounts
+            _suggested_cache["updated_at"] = time.time()
+            return {"accounts": accounts[:limit], "cached": False}
+        else:
+            # Fallback if API fails
+            return {"accounts": get_fallback_accounts()[:limit], "cached": False, "fallback": True}
+            
+    except Exception as e:
+        print(f"Error fetching suggested accounts: {e}")
+        return {"accounts": get_fallback_accounts()[:limit], "cached": False, "fallback": True}
+
+
+def get_fallback_accounts():
+    """Static fallback list of popular Vietnamese TikTokers."""
+    return [
+        {"username": "ciin_rubi", "nickname": "👑 CiiN - Lisa of Vietnam", "region": "VN"},
+        {"username": "hoaa.hanassii", "nickname": "💃 Hoa Hanassii", "region": "VN"},
+        {"username": "hoa_2309", "nickname": "🔥 Ngô Ngọc Hòa", "region": "VN"},
+        {"username": "minah.ne", "nickname": "🎵 Minah", "region": "VN"},
+        {"username": "lebong95", "nickname": "💪 Lê Bống", "region": "VN"},
+        {"username": "po.trann77", "nickname": "✨ Trần Thanh Tâm", "region": "VN"},
+        {"username": "gamkami", "nickname": "🎱 Gấm Kami", "region": "VN"},
+        {"username": "quynhalee", "nickname": "🎮 Quỳnh Alee", "region": "VN"},
+        {"username": "tieu_hy26", "nickname": "👰 Tiểu Hý", "region": "VN"},
+        {"username": "changmie", "nickname": "🎤 Changmie", "region": "VN"},
+        {"username": "vuthuydien", "nickname": "😄 Vũ Thụy Điển", "region": "VN"},
+        {"username": "thienantv", "nickname": "😂 Thiên An TV", "region": "VN"},
+        {"username": "amee_official", "nickname": "🎵 AMEE", "region": "VN"},
+        {"username": "sontungmtp_official", "nickname": "🎤 Sơn Tùng M-TP", "region": "VN"},
+        {"username": "hieuthuhai_", "nickname": "🎧 HIEUTHUHAI", "region": "VN"},
+        {"username": "mck.99", "nickname": "🔥 MCK", "region": "VN"},
+        {"username": "tranducbo", "nickname": "😄 Trần Đức Bo", "region": "VN"},
+        {"username": "call.me.duy", "nickname": "🎭 Call Me Duy", "region": "VN"},
+        {"username": "mai_ngok", "nickname": "💕 Mai Ngok", "region": "VN"},
+        {"username": "thanhtrungdam", "nickname": "🎤 Đàm Thanh Trung", "region": "VN"},
+    ]

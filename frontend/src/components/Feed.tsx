@@ -199,11 +199,33 @@ export const Feed: React.FC = () => {
     const loadSuggestedProfiles = async () => {
         setLoadingProfiles(true);
         try {
-            const usernames = SUGGESTED_ACCOUNTS.map(a => a.username.replace('@', '')).join(',');
-            const res = await axios.get(`${API_BASE_URL}/user/profiles?usernames=${usernames}`);
-            setSuggestedProfiles(res.data);
+            // Try the dynamic suggested API first (auto-updates from TikTok Vietnam)
+            const res = await axios.get(`${API_BASE_URL}/user/suggested?limit=50`);
+            const accounts = res.data.accounts || [];
+
+            if (accounts.length > 0) {
+                // Map API response to our profile format
+                setSuggestedProfiles(accounts.map((acc: any) => ({
+                    username: acc.username,
+                    nickname: acc.nickname || acc.username,
+                    avatar: acc.avatar || null,
+                    followers: acc.followers || 0,
+                    verified: acc.verified || false
+                })));
+            } else {
+                // Fallback to static list if API returns empty
+                setSuggestedProfiles(SUGGESTED_ACCOUNTS.map(a => ({
+                    username: a.username.replace('@', ''),
+                    nickname: a.label
+                })));
+            }
         } catch (err) {
             console.error('Failed to load profiles:', err);
+            // Fallback to static list on error
+            setSuggestedProfiles(SUGGESTED_ACCOUNTS.map(a => ({
+                username: a.username.replace('@', ''),
+                nickname: a.label
+            })));
         } finally {
             setLoadingProfiles(false);
         }
