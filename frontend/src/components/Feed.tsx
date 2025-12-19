@@ -18,23 +18,70 @@ const SUGGESTED_CATEGORIES = [
     { id: 'comedy', name: '😂 Hài Hước', query: 'hai huoc vietnam' },
 ];
 
-// Vietnamese TikTok Dance Influencers
+// Famous Dance TikTokers - 50+ accounts from around the world
 const SUGGESTED_ACCOUNTS = [
-    // Dance Queens
+    // === GLOBAL STARS ===
+    { username: '@charlidamelio', label: '👑 Charli D\'Amelio - Queen' },
+    { username: '@addisonre', label: '✨ Addison Rae' },
+    { username: '@bellapoarch', label: '🎵 Bella Poarch' },
+    { username: '@khloekardashian', label: '💫 Khloé Kardashian' },
+    { username: '@jfrancesch', label: '💃 Jason Derulo' },
+    { username: '@justmaiko', label: '🔥 Michael Le' },
+    { username: '@thereal.animations', label: '🎭 Dance Animations' },
+    { username: '@willsmith', label: '🌟 Will Smith' },
+    // === K-POP & ASIAN ===
+    { username: '@lisa_blackpink', label: '🖤💖 LISA BLACKPINK' },
+    { username: '@bfrancisco', label: '🇵🇭 Bella Francisco' },
+    { username: '@niana_guerrero', label: '🌈 Niana Guerrero' },
+    { username: '@ranz', label: '🎤 Ranz Kyle' },
+    { username: '@1milliondance', label: '💯 1Million Dance' },
+    { username: '@babymonsteryg', label: '🐾 BABYMONSTER' },
+    { username: '@enhypen', label: '🎵 ENHYPEN' },
+    { username: '@aespaficial', label: '✨ aespa' },
+    { username: '@itzy.all.in.us', label: '💪 ITZY' },
+    { username: '@straykids_official', label: '🔥 Stray Kids' },
+    // === DANCE CREWS ===
+    { username: '@thechipmunks', label: '🐿️ The Chipmunks' },
+    { username: '@thekinjaz', label: '🎯 The Kinjaz' },
+    { username: '@jabbawockeez', label: '🎭 Jabbawockeez' },
+    { username: '@worldofdance', label: '🌍 World of Dance' },
+    { username: '@dancemoms', label: '👯 Dance Moms' },
+    // === VIRAL DANCERS ===
+    { username: '@mikimakey', label: '🎀 Miki Makey' },
+    { username: '@enola_bedard', label: '🇫🇷 Énola Bédard' },
+    { username: '@lizzy_wurst', label: '😊 Lizzy Wurst' },
+    { username: '@thepaigeniemann', label: '⭐ Paige Niemann' },
+    { username: '@brentrivera', label: '😄 Brent Rivera' },
+    { username: '@larray', label: '💅 Larray' },
+    { username: '@avani', label: '🖤 Avani' },
+    { username: '@noahbeck', label: '🏃 Noah Beck' },
+    { username: '@lilhuddy', label: '🎸 Lil Huddy' },
+    // === VIETNAMESE DANCE ===
     { username: '@ciin_rubi', label: '👑 CiiN - Lisa of Vietnam' },
-    { username: '@hoaa.hanassii', label: '💃 Đào Lê Phương Hoa - Queen of Wiggle' },
-    { username: '@hoa_2309', label: '🔥 Ngô Ngọc Hòa - Hot Trend' },
-    { username: '@minah.ne', label: '🎵 Minah - K-pop Dancer' },
-    // Hot Trend Creators
-    { username: '@lebong95', label: '💪 Lê Bống - Fitness Dance' },
+    { username: '@hoaa.hanassii', label: '💃 Hoa Hanassii' },
+    { username: '@hoa_2309', label: '🔥 Ngô Ngọc Hòa' },
+    { username: '@minah.ne', label: '🎵 Minah' },
+    { username: '@lebong95', label: '💪 Lê Bống' },
     { username: '@po.trann77', label: '✨ Trần Thanh Tâm' },
-    { username: '@gamkami', label: '🎱 Gấm Kami - Cute Style' },
-    { username: '@quynhalee', label: '🎮 Quỳnh Alee - Gaming Dance' },
-    { username: '@tieu_hy26', label: '👰 Tiểu Hý - National Wife' },
-    // Music & Remix
-    { username: '@changmie', label: '🎤 Changmie - Singer/Mashups' },
-    { username: '@vuthuydien', label: '😄 Vũ Thụy Điển - Humor' },
+    { username: '@gamkami', label: '🎱 Gấm Kami' },
+    { username: '@quynhalee', label: '🎮 Quỳnh Alee' },
+    { username: '@tieu_hy26', label: '👰 Tiểu Hý' },
+    { username: '@changmie', label: '🎤 Changmie' },
+    { username: '@vuthuydien', label: '😄 Vũ Thụy Điển' },
+    // === CHOREOGRAPHERS ===
+    { username: '@chloearnold', label: '🎬 Chloe Arnold' },
+    { username: '@alexis_beauregard', label: '🌟 Alexis Beauregard' },
+    { username: '@mattiapolibio', label: '⭐ Mattia Polibio' },
+    { username: '@jawsh685', label: '🎧 Jawsh 685' },
+    { username: '@daviddooboy', label: '🕺 David Vu' },
+    // === FUN & COMEDY DANCE ===
+    { username: '@domainichael', label: '😂 Domaini Michael' },
+    { username: '@jailifebymike', label: '💃 Jai Life' },
+    { username: '@dancewithjulian', label: '🎭 Julian' },
+    { username: '@leiasfanpage', label: '💖 Leia' },
+    { username: '@taylerholder', label: '🔥 Tayler Holder' },
 ];
+
 
 // Inspirational quotes for loading states
 const INSPIRATION_QUOTES = [
@@ -67,6 +114,7 @@ export const Feed: React.FC = () => {
     // Suggested profiles with real data
     const [suggestedProfiles, setSuggestedProfiles] = useState<UserProfile[]>([]);
     const [loadingProfiles, setLoadingProfiles] = useState(false);
+    const [suggestedLimit, setSuggestedLimit] = useState(12); // Lazy load - start with 12
 
     // Search state
     const [searchInput, setSearchInput] = useState('');
@@ -935,7 +983,7 @@ export const Feed: React.FC = () => {
                         )}
 
                         <div className="grid grid-cols-4 gap-4">
-                            {(suggestedProfiles.length > 0 ? suggestedProfiles : SUGGESTED_ACCOUNTS.map(a => ({ username: a.username.replace('@', ''), nickname: a.label }))).slice(0, 8).map((profile: UserProfile | { username: string; nickname: string }) => {
+                            {(suggestedProfiles.length > 0 ? suggestedProfiles : SUGGESTED_ACCOUNTS.map(a => ({ username: a.username.replace('@', ''), nickname: a.label }))).slice(0, suggestedLimit).map((profile: UserProfile | { username: string; nickname: string }) => {
                                 const username = 'username' in profile ? profile.username : '';
 
                                 return (
@@ -962,6 +1010,16 @@ export const Feed: React.FC = () => {
                                 );
                             })}
                         </div>
+
+                        {/* Load More Button */}
+                        {suggestedLimit < SUGGESTED_ACCOUNTS.length && (
+                            <button
+                                onClick={() => setSuggestedLimit(prev => Math.min(prev + 12, SUGGESTED_ACCOUNTS.length))}
+                                className="w-full mt-6 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-white/60 text-sm transition-colors"
+                            >
+                                Show More ({SUGGESTED_ACCOUNTS.length - suggestedLimit} remaining)
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
