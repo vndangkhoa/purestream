@@ -607,41 +607,59 @@ export const Feed: React.FC = () => {
                         </div>
                     )}
 
-                    <button
-                        onClick={handleBrowserLogin}
-                        className="w-full py-4 px-6 bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-400 hover:to-pink-400 text-white font-semibold rounded-xl transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-pink-500/20 mb-4"
-                    >
-                        Login with TikTok
-                    </button>
+                    {/* Info for Docker/Server users */}
+                    <div className="mb-6 p-4 bg-cyan-500/10 border border-cyan-500/20 rounded-xl">
+                        <p className="text-cyan-400 text-sm text-center mb-2">
+                            🐳 <strong>Docker/Server Users</strong>
+                        </p>
+                        <p className="text-gray-400 text-xs text-center">
+                            Use the <strong>Manual Login</strong> below. Browser login only works on local machines with a display.
+                        </p>
+                    </div>
 
-                    <p className="text-center text-gray-600 text-xs mb-6">
-                        Opens a browser for secure SSL login
-                    </p>
+                    {/* Manual Login - Primary for Docker */}
+                    <div className="p-4 bg-white/5 rounded-xl border border-white/10 mb-4">
+                        <label className="block text-gray-300 text-sm font-medium mb-3">
+                            📋 Paste TikTok Cookies (Recommended)
+                        </label>
+                        <textarea
+                            value={jsonInput}
+                            onChange={(e) => setJsonInput(e.target.value)}
+                            placeholder='{"http": {"headers": {...}, "cookies": {...}}}'
+                            className="w-full h-28 bg-black/50 border border-white/10 rounded-lg p-3 text-white text-xs font-mono resize-none focus:outline-none focus:border-cyan-500/50 mb-3"
+                        />
+                        <button
+                            onClick={handleJsonLogin}
+                            className="w-full py-3 bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-400 hover:to-pink-400 text-white font-semibold rounded-xl transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-pink-500/20"
+                        >
+                            Connect with Cookies
+                        </button>
+                        <p className="text-gray-500 text-xs text-center mt-3">
+                            Export cookies from TikTok using a browser extension like "EditThisCookie" or "Cookie-Editor"
+                        </p>
+                    </div>
 
-                    <button
-                        onClick={() => setShowAdvanced(!showAdvanced)}
-                        className="w-full text-center text-gray-500 hover:text-gray-400 text-sm py-2"
-                    >
-                        {showAdvanced ? '▲ Hide Advanced' : '▼ Advanced Login'}
-                    </button>
+                    {/* Browser Login - Alternative */}
+                    <div className="text-center">
+                        <button
+                            onClick={() => setShowAdvanced(!showAdvanced)}
+                            className="text-gray-500 hover:text-gray-400 text-sm py-2"
+                        >
+                            {showAdvanced ? '▲ Hide Browser Login' : '▼ Try Browser Login (Local Only)'}
+                        </button>
+                    </div>
 
                     {showAdvanced && (
-                        <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10">
-                            <label className="block text-gray-400 text-sm mb-2">
-                                Paste Session JSON:
-                            </label>
-                            <textarea
-                                value={jsonInput}
-                                onChange={(e) => setJsonInput(e.target.value)}
-                                placeholder='{"http": {"headers": {...}, "cookies": {...}}}'
-                                className="w-full h-32 bg-black/50 border border-white/10 rounded-lg p-3 text-white text-xs font-mono resize-none focus:outline-none focus:border-cyan-500/50"
-                            />
+                        <div className="mt-4">
                             <button
-                                onClick={handleJsonLogin}
-                                className="w-full mt-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm transition-colors"
+                                onClick={handleBrowserLogin}
+                                className="w-full py-3 px-6 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-all text-sm"
                             >
-                                Connect with Session Data
+                                Open TikTok Login Window
                             </button>
+                            <p className="text-center text-gray-600 text-xs mt-2">
+                                ⚠️ Only works when running locally with a display
+                            </p>
                         </div>
                     )}
                 </div>
