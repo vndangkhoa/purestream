@@ -115,3 +115,30 @@ async def logout():
     if os.path.exists(COOKIES_FILE):
         os.remove(COOKIES_FILE)
     return {"status": "success", "message": "Logged out"}
+
+
+@router.post("/start-vnc")
+async def start_vnc_login():
+    """
+    Start VNC login - opens a visible browser via noVNC.
+    Users interact with the browser stream to login.
+    """
+    result = await PlaywrightManager.start_vnc_login()
+    return result
+
+
+@router.get("/check-vnc")
+async def check_vnc_login():
+    """
+    Check if VNC login is complete (sessionid cookie detected).
+    Frontend polls this endpoint.
+    """
+    result = await PlaywrightManager.check_vnc_login()
+    return result
+
+
+@router.post("/stop-vnc")
+async def stop_vnc_login():
+    """Stop the VNC login browser."""
+    result = await PlaywrightManager.stop_vnc_login()
+    return result

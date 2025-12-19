@@ -26,9 +26,17 @@ class PlaywrightManager:
         "--disable-blink-features=AutomationControlled",
         "--no-sandbox",
         "--disable-dev-shm-usage",
+        "--start-maximized",
     ]
     
     DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    
+    # VNC login state (class-level to persist across requests)
+    _vnc_playwright = None
+    _vnc_browser = None
+    _vnc_context = None
+    _vnc_page = None
+    _vnc_active = False
 
     @staticmethod
     def parse_json_credentials(json_creds: dict) -> tuple[List[dict], str]:
@@ -117,6 +125,106 @@ class PlaywrightManager:
         
         with open(USER_AGENT_FILE, "w") as f:
             json.dump({"user_agent": user_agent}, f)
+
+    @classmethod
+    async def start_vnc_login(cls) -> dict:
+        """
+        Start a visible browser for VNC login.
+        The browser displays on DISPLAY=:99 which is streamed via noVNC.
+        Returns immediately - browser stays open for user interaction.
+        """
+        # Close any existing VNC session
+        if cls._vnc_active:
+            await cls.stop_vnc_login()
+        
+        print("DEBUG: Starting VNC login browser...")
+        
+        try:
+            cls._vnc_playwright = await async_playwright().start()
+            cls._vnc_browser = await cls._vnc_playwright.chromium.launch(
+                headless=False,  # Visible browser
+                args=cls.BROWSER_ARGS
+            )
+            
+            cls._vnc_context = await cls._vnc_browser.new_context(
+                user_agent=cls.DEFAULT_USER_AGENT,
+                viewport={"width": 1200, "height": 750}
+            )
+            
+            cls._vnc_page = await cls._vnc_context.new_page()
+            await cls._vnc_page.goto("https://www.tiktok.com/login", wait_until="domcontentloaded")
+            
+            cls._vnc_active = True
+            print("DEBUG: VNC browser opened with TikTok login page")
+            
+            return {
+                "status": "started",
+                "message": "Browser opened. Please login via the VNC stream."
+            }
+            
+        except Exception as e:
+            print(f"DEBUG: VNC login start error: {e}")
+            cls._vnc_active = False
+            return {
+                "status": "error",
+                "message": f"Failed to start browser: {str(e)}"
+            }
+
+    @classmethod
+    async def check_vnc_login(cls) -> dict:
+        """
+        Check if user has logged in by looking for sessionid cookie.
+        Called by frontend via polling.
+        """
+        if not cls._vnc_active or not cls._vnc_context:
+            return {"status": "not_active", "logged_in": False}
+        
+        try:
+            all_cookies = await cls._vnc_context.cookies()
+            cookies_found = {}
+            
+            for cookie in all_cookies:
+                if cookie.get("domain", "").endswith("tiktok.com"):
+                    cookies_found[cookie["name"]] = cookie["value"]
+            
+            if "sessionid" in cookies_found:
+                # Save cookies and close browser
+                cls.save_credentials(cookies_found, cls.DEFAULT_USER_AGENT)
+                await cls.stop_vnc_login()
+                
+                return {
+                    "status": "success",
+                    "logged_in": True,
+                    "message": "Login successful!",
+                    "cookie_count": len(cookies_found)
+                }
+            
+            return {"status": "waiting", "logged_in": False}
+            
+        except Exception as e:
+            print(f"DEBUG: VNC check error: {e}")
+            return {"status": "error", "logged_in": False, "message": str(e)}
+
+    @classmethod
+    async def stop_vnc_login(cls) -> dict:
+        """Close the VNC browser session."""
+        print("DEBUG: Stopping VNC login browser...")
+        
+        try:
+            if cls._vnc_browser:
+                await cls._vnc_browser.close()
+            if cls._vnc_playwright:
+                await cls._vnc_playwright.stop()
+        except Exception as e:
+            print(f"DEBUG: Error closing VNC browser: {e}")
+        
+        cls._vnc_browser = None
+        cls._vnc_context = None
+        cls._vnc_page = None
+        cls._vnc_playwright = None
+        cls._vnc_active = False
+        
+        return {"status": "stopped"}
 
     @staticmethod
     async def credential_login(username: str, password: str, timeout_seconds: int = 60) -> dict:

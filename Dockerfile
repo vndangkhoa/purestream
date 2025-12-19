@@ -9,7 +9,7 @@ RUN npm run build
 # Production stage
 FROM python:3.11-slim
 
-# Install system dependencies for Playwright and yt-dlp
+# Install system dependencies for Playwright, VNC, and noVNC
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     curl \
@@ -35,9 +35,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatspi2.0-0 \
     libgtk-3-0 \
     fonts-liberation \
+    # VNC and display
     xvfb \
     xauth \
+    x11vnc \
+    supervisor \
+    # noVNC dependencies
+    python3-numpy \
     && rm -rf /var/lib/apt/lists/*
+
+# Install noVNC
+RUN mkdir -p /opt/noVNC/utils/websockify \
+    && wget -qO- https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.tar.gz | tar xz --strip 1 -C /opt/noVNC \
+    && wget -qO- https://github.com/novnc/websockify/archive/refs/tags/v0.11.0.tar.gz | tar xz --strip 1 -C /opt/noVNC/utils/websockify \
+    && ln -s /opt/noVNC/vnc.html /opt/noVNC/index.html
 
 WORKDIR /app
 
@@ -60,20 +71,23 @@ COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 # Create cache directory
 RUN mkdir -p /app/cache && chmod 777 /app/cache
 
+# Copy supervisor config
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
 # Environment variables
 ENV PYTHONUNBUFFERED=1
 ENV CACHE_DIR=/app/cache
+ENV DISPLAY=:99
 
 # Set working directory to backend for correct imports
 WORKDIR /app/backend
 
-# Expose port
-EXPOSE 8002
+# Expose ports (8002 = app, 6080 = noVNC)
+EXPOSE 8002 6080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8002/health || exit 1
 
-# Start the application with xvfb for headless browser support
-CMD ["sh", "-c", "xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' python -m uvicorn main:app --host 0.0.0.0 --port 8002"]
-
+# Start services using supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

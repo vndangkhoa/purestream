@@ -7,19 +7,17 @@ services:
     restart: unless-stopped
     ports:
       - "8002:8002"
+      - "6080:6080"
     volumes:
-      # Persist video cache
-      - purestream_cache:/app/cache
-      # Persist login session (optional - for persistent TikTok login)
-      - purestream_session:/app/backend/session
+      - ./cache:/app/cache
+      - ./session:/app/backend/session
     environment:
       - PYTHONUNBUFFERED=1
       - CACHE_DIR=/app/cache
       - MAX_CACHE_SIZE_MB=500
       - CACHE_TTL_HOURS=24
-    # Required for Playwright browser
     shm_size: '2gb'
-    # Use custom network to avoid IP conflicts
+    # IMPORTANT: You must link the service to the network
     networks:
       - purestream_net
     healthcheck:
@@ -29,16 +27,11 @@ services:
       retries: 3
       start_period: 60s
 
-volumes:
-  purestream_cache:
-    driver: local
-  purestream_session:
-    driver: local
-
 networks:
   purestream_net:
     driver: bridge
     ipam:
       driver: default
       config:
-        - subnet: 172.28.0.0/16
+        # Using 10.10.0.0 is much safer and less likely to overlap
+        - subnet: 10.10.0.0/16
