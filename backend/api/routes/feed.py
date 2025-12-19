@@ -190,10 +190,11 @@ async def proxy_video(
 ):
     """
     Proxy video with LRU caching for mobile optimization.
-    Cache hit = instant playback, cache miss = download and cache.
+    Prefers H.264 codec for browser compatibility, re-encodes HEVC if needed.
     """
     import yt_dlp
     import re
+    import subprocess
     
     # Check cache first
     cached_path = get_cached_path(url)
@@ -231,8 +232,10 @@ async def proxy_video(
         cookie_file.close()
         cookie_file_path = cookie_file.name
     
+    # Prefer H.264 (avc1) over HEVC (hvc1/hev1) for browser compatibility
+    # Format selection: prefer mp4 with h264, fallback to best mp4, then re-encode if HEVC
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
+        'format': 'best[ext=mp4][vcodec^=avc]/best[ext=mp4]/best',  # Prefer H.264
         'outtmpl': output_template,
         'quiet': True,
         'no_warnings': True,
@@ -246,6 +249,7 @@ async def proxy_video(
         ydl_opts['cookiefile'] = cookie_file_path
     
     video_path = None
+    video_codec = None
     
     try:
         loop = asyncio.get_event_loop()
@@ -254,12 +258,49 @@ async def proxy_video(
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 ext = info.get('ext', 'mp4')
-                return os.path.join(temp_dir, f"video.{ext}")
+                # Get codec info
+                vcodec = info.get('vcodec', 'unknown')
+                return os.path.join(temp_dir, f"video.{ext}"), vcodec
         
-        video_path = await loop.run_in_executor(None, download_video)
+        video_path, video_codec = await loop.run_in_executor(None, download_video)
         
         if not os.path.exists(video_path):
             raise Exception("Video file not created")
+        
+        print(f"Downloaded codec: {video_codec}")
+        
+        # Check if we need to re-encode HEVC to H.264
+        is_hevc = video_codec and any(x in video_codec.lower() for x in ['hevc', 'hev1', 'hvc1', 'h265', 'h.265'])
+        
+        if is_hevc:
+            print(f"HEVC detected, re-encoding to H.264 for browser compatibility...")
+            h264_path = os.path.join(temp_dir, "video_h264.mp4")
+            
+            def reencode_to_h264():
+                # Use ffmpeg to re-encode from HEVC to H.264
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-i', video_path,
+                    '-c:v', 'libx264',  # H.264 codec
+                    '-preset', 'fast',   # Balance speed and quality
+                    '-crf', '23',        # Quality (lower = better, 18-28 is good)
+                    '-c:a', 'aac',       # AAC audio
+                    '-movflags', '+faststart',  # Web optimization
+                    h264_path
+                ]
+                result = subprocess.run(cmd, capture_output=True, timeout=120)
+                if result.returncode != 0:
+                    print(f"FFmpeg error: {result.stderr.decode()[:200]}")
+                    return None
+                return h264_path
+            
+            reencoded_path = await loop.run_in_executor(None, reencode_to_h264)
+            
+            if reencoded_path and os.path.exists(reencoded_path):
+                video_path = reencoded_path
+                print("Re-encoding successful!")
+            else:
+                print("Re-encoding failed, using original HEVC (may not play in all browsers)")
         
         # Save to cache for future requests
         cached_path = save_to_cache(url, video_path)
