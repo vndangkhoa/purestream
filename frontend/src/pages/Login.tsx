@@ -35,8 +35,8 @@ export const Login: React.FC = () => {
 
     const getVncUrl = () => {
         const host = window.location.hostname;
-        // KasmVNC params: autoconnect=1, resize=scale (fit to screen), negotiate items
-        return `http://${host}:6080/vnc.html?autoconnect=1&resize=scale&encrypt=0`;
+        // autoconnect=true, resize=scale to fit, quality=9 for clear text
+        return `http://${host}:6080/vnc.html?autoconnect=true&resize=scale&quality=9`;
     };
 
     const handleVncLogin = async () => {

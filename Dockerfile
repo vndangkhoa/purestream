@@ -10,13 +10,15 @@ RUN npm run build
 FROM python:3.11-slim
 
 # Install system dependencies
-# Combined list for Playwright, KasmVNC, and general utilities
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     curl \
     gnupg \
     ca-certificates \
     ffmpeg \
+    # VNC & Display dependencies
+    xvfb \
+    x11vnc \
     openbox \
     # Playwright dependencies
     libnss3 \
@@ -37,44 +39,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatspi2.0-0 \
     libgtk-3-0 \
     fonts-liberation \
-    # KasmVNC dependencies
-    libjpeg62-turbo \
-    libpng16-16 \
-    libx11-6 \
-    libxcursor1 \
-    libxext6 \
-    libxi6 \
-    libxinerama1 \
-    libxrender1 \
-    libxtst6 \
-    zlib1g \
-    libssl3 \
-    adduser \
-    libfontconfig1 \
-    libgl1 \
-    libpixman-1-0 \
-    libxfont2 \
-    libxkbfile1 \
-    libdatetime-perl \
-    libwww-perl \
-    xfonts-base \
-    xfonts-75dpi \
-    xfonts-100dpi \
-    python3-yaml \
     supervisor \
     && rm -rf /var/lib/apt/lists/*
 
-# Install KasmVNC (Debian Bookworm)
-RUN wget -q https://github.com/kasmtech/KasmVNC/releases/download/v1.3.1/kasmvncserver_bookworm_1.3.1_amd64.deb -O /tmp/kasmvnc.deb \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends /tmp/kasmvnc.deb \
-    && rm /tmp/kasmvnc.deb \
-    && rm -rf /var/lib/apt/lists/*
-
-# Setup KasmVNC user
-# KasmVNC requires a non-root user for security best practices, but we run as root in this simple container.
-# We will run vncserver as root (not recommended but easiest for migration) or create a user.
-# Let's try running as root first with specific flags.
+# Install noVNC
+RUN mkdir -p /opt/novnc \
+    && wget -qO- https://github.com/novnc/noVNC/archive/v1.4.0.tar.gz | tar xz -C /opt/novnc --strip-components=1 \
+    && mkdir -p /opt/novnc/utils/websockify \
+    && wget -qO- https://github.com/novnc/websockify/archive/v0.11.0.tar.gz | tar xz -C /opt/novnc/utils/websockify --strip-components=1 \
+    && ln -s /opt/novnc/vnc.html /opt/novnc/index.html
 
 WORKDIR /app
 
@@ -104,13 +77,11 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 ENV PYTHONUNBUFFERED=1
 ENV CACHE_DIR=/app/cache
 ENV DISPLAY=:99
-# KasmVNC envs
-ENV KASM_VNC_ARGS="-httpport 6080 -FrameRate 60 -sslOnly 0"
 
 # Set working directory to backend for correct imports
 WORKDIR /app/backend
 
-# Expose ports (8002 = app, 6080 = KasmVNC)
+# Expose ports (8002 = app, 6080 = noVNC)
 EXPOSE 8002 6080
 
 # Health check
