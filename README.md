@@ -177,11 +177,49 @@ PureStream uses your TikTok session cookies. Once configured by the admin, **all
 
 6. ✅ **Done!** Now anyone can access `http://your-server-ip:8002/` on any device (including phones)
 
-### For Mobile Users
+### Getting Cookies on Mobile (If No Desktop Available)
 
-Regular users don't need to do anything - just open the app URL in their phone browser. The admin (you) configures cookies once, and everyone benefits.
+#### 📱 Android Phone
 
-> If you only have a phone: On Android, use **Kiwi Browser** which supports Chrome extensions. On iOS, you'll need access to a desktop computer.
+1. **Install Kiwi Browser** from [Google Play Store](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser)
+   - Kiwi Browser supports Chrome extensions on Android
+
+2. **Install Cookie-Editor extension**:
+   - In Kiwi, go to: `chrome://extensions`
+   - Enable "Developer mode" (toggle in top right)
+   - Go to [Cookie-Editor on Chrome Web Store](https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm)
+   - Click "Add to Chrome"
+
+3. **Get cookies**:
+   - Go to [tiktok.com](https://www.tiktok.com) in Kiwi Browser
+   - Login to your TikTok account
+   - Tap the 3-dot menu → Extensions → Cookie-Editor
+   - Tap **Export** → **Copy**
+
+4. **Paste in admin page**:
+   - Go to `http://your-server-ip:8002/admin`
+   - Login with admin password
+   - Paste cookies and save
+
+#### 🍎 iOS/iPhone
+
+Unfortunately, iOS Safari doesn't support browser extensions. Options:
+
+1. **Use a desktop computer** (recommended) - borrow a friend's laptop for 5 minutes
+
+2. **Use Orion Browser** (limited):
+   - Install [Orion Browser](https://apps.apple.com/app/orion-browser-by-kagi/id1484498200) from App Store
+   - It has some extension support, but Cookie-Editor may not work perfectly
+
+3. **Manual method** (advanced):
+   - On iOS Safari, go to tiktok.com and login
+   - In Safari: Settings → Safari → Advanced → Web Inspector (enable)
+   - Connect to Mac with Safari → Develop menu → your phone
+   - In console: `document.cookie` - copy the sessionid value
+   - Format as: `[{"name":"sessionid","value":"YOUR_VALUE_HERE"}]`
+
+> **Tip**: The easiest option for iOS users is to use any desktop/laptop computer (Windows, Mac, Linux, Chromebook) to do the one-time cookie setup.
+
 
 ### Environment Variables
 
