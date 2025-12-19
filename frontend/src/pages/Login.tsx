@@ -35,8 +35,8 @@ export const Login: React.FC = () => {
 
     const getVncUrl = () => {
         const host = window.location.hostname;
-        // autoconnect=true, resize=scale to fit, quality=9 for clear text
-        return `http://${host}:6080/vnc.html?autoconnect=true&resize=scale&quality=9`;
+        // autoconnect=true, resize=remote (server resizing) for full screen mobile
+        return `http://${host}:6080/vnc.html?autoconnect=true&resize=remote&quality=9`;
     };
 
     const handleVncLogin = async () => {

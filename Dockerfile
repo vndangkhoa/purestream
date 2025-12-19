@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     ffmpeg \
     # VNC & Display dependencies
-    xvfb \
-    x11vnc \
+    tigervnc-standalone-server \
+    tigervnc-common \
     openbox \
     # Playwright dependencies
     libnss3 \

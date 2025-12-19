@@ -12,7 +12,13 @@ import json
 import os
 from typing import List, Dict, Optional
 from playwright.async_api import async_playwright, Response, Browser, BrowserContext
-from playwright_stealth import stealth_async
+
+try:
+    from playwright_stealth import stealth_async
+except ImportError:
+    print("WARNING: playwright_stealth not found, disabling stealth mode.")
+    async def stealth_async(page):
+        pass
 
 
 COOKIES_FILE = "cookies.json"
