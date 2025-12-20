@@ -332,6 +332,9 @@ export const Feed: React.FC = () => {
                     if (loaded.length > 0) {
                         setVideos(loaded);
                         setViewState('feed');
+
+                        // Start prefetching first 3 videos immediately
+                        videoPrefetcher.prefetchInitialBatch(loaded, 3);
                     }
                 }
             );

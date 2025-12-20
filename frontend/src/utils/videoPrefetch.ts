@@ -8,8 +8,8 @@ interface PrefetchConfig {
 }
 
 const DEFAULT_CONFIG: PrefetchConfig = {
-  lookahead: 2,
-  concurrency: 1,
+  lookahead: 3,        // Increased from 2 for better buffering
+  concurrency: 2,      // Increased from 1 for parallel downloads
   timeoutMs: 30000
 };
 
@@ -47,6 +47,33 @@ class VideoPrefetcher {
       this.prefetchQueue.add(video.id);
       this.prefetchVideo(video).catch(console.error);
     }
+  }
+
+  /**
+   * Prefetch initial batch of videos immediately after feed loads.
+   * This ensures first few videos are ready before user starts scrolling.
+   */
+  async prefetchInitialBatch(
+    videos: Video[],
+    count: number = 3
+  ): Promise<void> {
+    if (!this.isInitialized) await this.init();
+    if (videos.length === 0) return;
+
+    console.log(`PREFETCH: Starting initial batch of ${Math.min(count, videos.length)} videos...`);
+
+    const toPrefetch = videos
+      .slice(0, count)
+      .filter((v) => v.url && !this.prefetchQueue.has(v.id));
+
+    // Start all prefetches in parallel (respects concurrency via browser limits)
+    const promises = toPrefetch.map((video) => {
+      this.prefetchQueue.add(video.id);
+      return this.prefetchVideo(video);
+    });
+
+    await Promise.allSettled(promises);
+    console.log(`PREFETCH: Initial batch complete (${toPrefetch.length} videos buffered)`);
   }
 
   private async prefetchVideo(video: Video): Promise<void> {
