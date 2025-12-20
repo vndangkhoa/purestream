@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Download, UserPlus, Check, Volume2, VolumeX } from 'lucide-react';
 import type { Video } from '../types';
 import { API_BASE_URL } from '../config';
+import { videoCache } from '../utils/videoCache';
 
 interface HeartParticle {
     id: number;
@@ -37,21 +38,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
     const [isSeeking, setIsSeeking] = useState(false);
-    const [useFallback, setUseFallback] = useState(false);  // Fallback to full proxy
-    // Use external mute state if provided, otherwise use local state for backward compatibility
+    const [useFallback, setUseFallback] = useState(false);
     const [localMuted, setLocalMuted] = useState(true);
     const isMuted = externalMuted !== undefined ? externalMuted : localMuted;
     const [hearts, setHearts] = useState<HeartParticle[]>([]);
-    const [isLoading, setIsLoading] = useState(true);  // Show loading spinner until video is ready
+    const [isLoading, setIsLoading] = useState(true);
+    const [cachedUrl, setCachedUrl] = useState<string | null>(null);
     const lastTapRef = useRef<number>(0);
 
-    // Full proxy URL (yt-dlp, always works but heavier)
     const fullProxyUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}`;
-    // Thin proxy URL (direct CDN stream, lighter)
     const thinProxyUrl = video.cdn_url ? `${API_BASE_URL}/feed/thin-proxy?cdn_url=${encodeURIComponent(video.cdn_url)}` : null;
-
-    // Use thin proxy first, fallback to full if needed (or if no cdn_url)
-    const proxyUrl = (thinProxyUrl && !useFallback) ? thinProxyUrl : fullProxyUrl;
+    const proxyUrl = cachedUrl ? cachedUrl : (thinProxyUrl && !useFallback) ? thinProxyUrl : fullProxyUrl;
     const downloadUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}&download=true`;
 
     useEffect(() => {
@@ -109,7 +106,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     // Reset fallback and loading state when video changes
     useEffect(() => {
         setUseFallback(false);
-        setIsLoading(true);  // Show loading for new video
+        setIsLoading(true);
+        setCachedUrl(null);
+
+        const checkCache = async () => {
+            const cached = await videoCache.get(video.url);
+            if (cached) {
+                const blob_url = URL.createObjectURL(cached);
+                setCachedUrl(blob_url);
+            }
+        };
+
+        checkCache();
     }, [video.id]);
 
     // Progress tracking
@@ -142,7 +150,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             video.removeEventListener('loadedmetadata', handleLoadedMetadata);
             video.removeEventListener('error', handleError);
         };
-    }, [thinProxyUrl, useFallback]);
+    }, [thinProxyUrl, useFallback, cachedUrl]);
+
+    useEffect(() => {
+        const cacheVideo = async () => {
+            if (!cachedUrl || !proxyUrl || proxyUrl === cachedUrl) return;
+
+            try {
+                const response = await fetch(proxyUrl);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    await videoCache.set(video.url, blob);
+                }
+            } catch (error) {
+                console.debug('Failed to cache video:', error);
+            }
+        };
+
+        if (isActive && !isLoading) {
+            cacheVideo();
+        }
+    }, [isActive, isLoading, proxyUrl, cachedUrl, video.url]);
 
     const togglePlayPause = () => {
         if (!videoRef.current) return;

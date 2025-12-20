@@ -4,6 +4,8 @@ import type { Video, UserProfile } from '../types';
 import axios from 'axios';
 import { API_BASE_URL } from '../config';
 import { Home, Users, Search, X, Plus } from 'lucide-react';
+import { videoPrefetcher } from '../utils/videoPrefetch';
+import { feedLoader } from '../utils/feedLoader';
 
 type ViewState = 'login' | 'loading' | 'feed';
 type TabType = 'foryou' | 'following' | 'search';
@@ -196,6 +198,17 @@ export const Feed: React.FC = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeTab, viewState]);
 
+    useEffect(() => {
+        const prefetch = async () => {
+            await videoPrefetcher.init();
+            if (activeTab === 'foryou') {
+                videoPrefetcher.prefetchNext(videos, currentIndex);
+            }
+        };
+
+        prefetch();
+    }, [currentIndex, videos, activeTab]);
+
     const loadSuggestedProfiles = async () => {
         setLoadingProfiles(true);
         try {
@@ -313,90 +326,24 @@ export const Feed: React.FC = () => {
         setError(null);
 
         try {
-            // Stage 1: Fast Load (0 scrolls, roughly 5-10 videos)
-            const fastRes = await axios.get(`${API_BASE_URL}/feed?fast=true`);
-
-            let initialVideos: Video[] = [];
-
-            if (Array.isArray(fastRes.data) && fastRes.data.length > 0) {
-                initialVideos = fastRes.data.map((v: any, i: number) => ({
-                    id: v.id || `video-${i}`,
-                    url: v.url,
-                    author: v.author || 'unknown',
-                    description: v.description || '',
-                    thumbnail: v.thumbnail,
-                    cdn_url: v.cdn_url,
-                    views: v.views,
-                    likes: v.likes
-                }));
-                setVideos(initialVideos);
-                setViewState('feed');
-            }
-
-            // Stage 2: Background Load (Full batch)
-            // Silent fetch to get more videos without blocking UI
-            // We only do this if we got some videos initially, OR if initial failed
-            axios.get(`${API_BASE_URL}/feed`).then(res => {
-                if (Array.isArray(res.data) && res.data.length > 0) {
-                    const moreVideos = res.data.map((v: any, i: number) => ({
-                        id: v.id || `video-full-${i}`,
-                        url: v.url,
-                        author: v.author || 'unknown',
-                        description: v.description || '',
-                        thumbnail: v.thumbnail,
-                        cdn_url: v.cdn_url,
-                        views: v.views,
-                        likes: v.likes
-                    }));
-
-                    // Deduplicate and append
-                    setVideos(prev => {
-                        const existingIds = new Set(prev.map(v => v.id));
-                        const distinctNew = moreVideos.filter((v: Video) => !existingIds.has(v.id));
-                        return [...prev, ...distinctNew];
-                    });
-
-                    // If we were in login/error state, switch to feed now
-                    setViewState(prev => prev === 'feed' ? 'feed' : 'feed');
+            const videos = await feedLoader.loadFeedWithOptimization(
+                false,
+                (loaded: Video[]) => {
+                    if (loaded.length > 0) {
+                        setVideos(loaded);
+                        setViewState('feed');
+                    }
                 }
-            }).catch(console.error); // Silent error for background fetch
+            );
 
-            if (initialVideos.length === 0) {
-                // If fast fetch failed to get videos, we wait for background...
-                // But simplified: show 'No videos' only if fast returned empty
-                // The background fetch will update UI if it finds something
-                if (!initialVideos.length) {
-                    // Keep loading state until background finishes? 
-                    // Or show error? For now, let's just let the user wait or see empty
-                    // Ideally we'd have a 'fetching more' indicator
-                }
-            }
-
-        } catch (err: any) {
-            console.error('Fast feed failed', err);
-            // Fallback to full fetch if fast fails
-            axios.get(`${API_BASE_URL}/feed`).then(res => {
-                if (Array.isArray(res.data) && res.data.length > 0) {
-                    const mapped = res.data.map((v: any, i: number) => ({
-                        id: v.id || `video-fallback-${i}`,
-                        url: v.url,
-                        author: v.author || 'unknown',
-                        description: v.description || '',
-                        thumbnail: v.thumbnail,
-                        cdn_url: v.cdn_url,
-                        views: v.views,
-                        likes: v.likes
-                    }));
-                    setVideos(mapped);
-                    setViewState('feed');
-                } else {
-                    setError('No videos found.');
-                    setViewState('login');
-                }
-            }).catch(e => {
-                setError(e.response?.data?.detail || 'Failed to load feed');
+            if (videos.length === 0) {
+                setError('No videos found.');
                 setViewState('login');
-            });
+            }
+        } catch (err: any) {
+            console.error('Feed load failed:', err);
+            setError(err.response?.data?.detail || 'Failed to load feed');
+            setViewState('login');
         }
     };
 
@@ -424,25 +371,14 @@ export const Feed: React.FC = () => {
         setIsFetching(true);
 
         try {
-            const res = await axios.get(`${API_BASE_URL}/feed`);
+            const newVideos = await feedLoader.loadFeedWithOptimization(false);
 
-            if (Array.isArray(res.data) && res.data.length > 0) {
-                const newVideos = res.data.map((v: any, i: number) => ({
-                    id: v.id || `video-new-${Date.now()}-${i}`,
-                    url: v.url,
-                    author: v.author || 'unknown',
-                    description: v.description || ''
-                }));
-
-                setVideos(prev => {
-                    const existingIds = new Set(prev.map(v => v.id));
-                    const unique = newVideos.filter((v: any) => !existingIds.has(v.id));
-                    if (unique.length === 0) setHasMore(false);
-                    return [...prev, ...unique];
-                });
-            } else {
-                setHasMore(false);
-            }
+            setVideos(prev => {
+                const existingIds = new Set(prev.map(v => v.id));
+                const unique = newVideos.filter((v: Video) => !existingIds.has(v.id));
+                if (unique.length === 0) setHasMore(false);
+                return [...prev, ...unique];
+            });
         } catch (err) {
             console.error('Failed to load more:', err);
         } finally {
