@@ -20,26 +20,35 @@ class FeedLoader {
 
   async loadFeedWithOptimization(
     fast: boolean = false,
-    onProgress?: (videos: Video[]) => void
+    onProgress?: (videos: Video[]) => void,
+    skipCache: boolean = false
   ): Promise<Video[]> {
     const startTime = performance.now();
 
     try {
-      if (fast) {
+      if (fast && !skipCache) {
         const videos = await this.loadWithCache('feed-fast');
         onProgress?.(videos);
         return videos;
       }
 
       const cacheKey = 'feed-full';
-      const cached = this.getCached(cacheKey);
-      if (cached) {
-        onProgress?.(cached);
-        return cached;
+      
+      // Skip cache check when explicitly requested (for infinite scroll)
+      if (!skipCache) {
+        const cached = this.getCached(cacheKey);
+        if (cached) {
+          onProgress?.(cached);
+          return cached;
+        }
       }
 
-      const videos = await this.fetchFeed();
-      this.setCached(cacheKey, videos);
+      const videos = await this.fetchFeed(skipCache);
+      
+      // Only cache if not skipping (initial load)
+      if (!skipCache) {
+        this.setCached(cacheKey, videos);
+      }
 
       onProgress?.(videos);
 
@@ -53,8 +62,12 @@ class FeedLoader {
     }
   }
 
-  private async fetchFeed(): Promise<Video[]> {
-    const response = await axios.get(`${API_BASE_URL}/feed`);
+  private async fetchFeed(skipCache: boolean = false): Promise<Video[]> {
+    // Add skip_cache parameter to force backend to fetch fresh videos
+    const url = skipCache 
+      ? `${API_BASE_URL}/feed?skip_cache=true` 
+      : `${API_BASE_URL}/feed`;
+    const response = await axios.get(url);
 
     if (!Array.isArray(response.data)) {
       return [];

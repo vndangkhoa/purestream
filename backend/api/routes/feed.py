@@ -156,11 +156,21 @@ async def get_feed(request: FeedRequest = None):
 
 
 @router.get("")
-async def get_feed_simple(fast: bool = False):
-    """Simple GET endpoint to fetch feed using stored credentials."""
+async def get_feed_simple(fast: bool = False, skip_cache: bool = False):
+    """Simple GET endpoint to fetch feed using stored credentials.
+    
+    Args:
+        fast: If True, only get initial batch (0 scrolls). If False, scroll 5 times.
+        skip_cache: If True, always fetch fresh videos (for infinite scroll).
+    """
     try:
         # Fast mode = 0 scrolls (just initial batch), Normal = 5 scrolls
         scroll_count = 0 if fast else 5
+        
+        # When skipping cache for infinite scroll, do more scrolling to get different videos
+        if skip_cache:
+            scroll_count = 8  # More scrolling to get fresh content
+            
         videos = await PlaywrightManager.intercept_feed(scroll_count=scroll_count)
         return videos
     except Exception as e:

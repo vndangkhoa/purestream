@@ -374,7 +374,8 @@ export const Feed: React.FC = () => {
         setIsFetching(true);
 
         try {
-            const newVideos = await feedLoader.loadFeedWithOptimization(false);
+            // Pass skipCache=true to force fetching fresh videos from backend
+            const newVideos = await feedLoader.loadFeedWithOptimization(false, undefined, true);
 
             setVideos(prev => {
                 const existingIds = new Set(prev.map(v => v.id));
