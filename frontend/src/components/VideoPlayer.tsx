@@ -49,13 +49,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [localMuted, setLocalMuted] = useState(true);
     const isMuted = externalMuted !== undefined ? externalMuted : localMuted;
     const [hearts, setHearts] = useState<HeartParticle[]>([]);
-<<<<<<< HEAD
-    const [isLoading, setIsLoading] = useState(true);
-    const [cachedUrl, setCachedUrl] = useState<string | null>(null);
-=======
     const [isLoading, setIsLoading] = useState(true);  // Show loading spinner until video is ready
+    const [cachedUrl, setCachedUrl] = useState<string | null>(null);
     const [codecError, setCodecError] = useState(false);  // True if video codec not supported
->>>>>>> 6153739 (feat: client-side video optimization - remove server transcoding for instant loading and zero CPU)
     const lastTapRef = useRef<number>(0);
     const browserSupportsHEVC = useRef(supportsHEVC());
 
@@ -119,8 +115,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     // Reset fallback and loading state when video changes
     useEffect(() => {
         setUseFallback(false);
-<<<<<<< HEAD
-        setIsLoading(true);
+        setIsLoading(true);  // Show loading for new video
+        setCodecError(false);  // Reset codec error for new video
         setCachedUrl(null);
 
         const checkCache = async () => {
@@ -132,10 +128,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         };
 
         checkCache();
-=======
-        setIsLoading(true);  // Show loading for new video
-        setCodecError(false);  // Reset codec error for new video
->>>>>>> 6153739 (feat: client-side video optimization - remove server transcoding for instant loading and zero CPU)
     }, [video.id]);
 
     // Progress tracking
