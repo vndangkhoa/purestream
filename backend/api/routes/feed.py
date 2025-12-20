@@ -190,18 +190,21 @@ async def proxy_video(
 ):
     """
     Proxy video with LRU caching for mobile optimization.
-    Prefers H.264 codec for browser compatibility, re-encodes HEVC if needed.
+    OPTIMIZED: No server-side transcoding - client handles decoding.
+    This reduces server CPU to ~0% during video playback.
     """
     import yt_dlp
     import re
-    import subprocess
     
     # Check cache first
     cached_path = get_cached_path(url)
     if cached_path:
         print(f"CACHE HIT: {url[:50]}...")
         
-        response_headers = {}
+        response_headers = {
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        }
         if download:
             video_id_match = re.search(r'/video/(\d+)', url)
             video_id = video_id_match.group(1) if video_id_match else "tiktok_video"
@@ -232,10 +235,10 @@ async def proxy_video(
         cookie_file.close()
         cookie_file_path = cookie_file.name
     
-    # Prefer H.264 (avc1) over HEVC (hvc1/hev1) for browser compatibility
-    # Format selection: prefer mp4 with h264, fallback to best mp4
+    # Download best quality - NO TRANSCODING (let client decode)
+    # Prefer H.264 when available, but accept any codec
     ydl_opts = {
-        'format': 'best[ext=mp4][vcodec^=avc]/best[ext=mp4]/best',  # Prefer H.264
+        'format': 'best[ext=mp4][vcodec^=avc]/best[ext=mp4]/best',
         'outtmpl': output_template,
         'quiet': True,
         'no_warnings': True,
@@ -249,7 +252,7 @@ async def proxy_video(
         ydl_opts['cookiefile'] = cookie_file_path
     
     video_path = None
-    video_codec = None
+    video_codec = "unknown"
     
     try:
         loop = asyncio.get_event_loop()
@@ -258,8 +261,7 @@ async def proxy_video(
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 ext = info.get('ext', 'mp4')
-                # Get codec info
-                vcodec = info.get('vcodec', '') or ''
+                vcodec = info.get('vcodec', 'unknown') or 'unknown'
                 return os.path.join(temp_dir, f"video.{ext}"), vcodec
         
         video_path, video_codec = await loop.run_in_executor(None, download_video)
@@ -267,70 +269,9 @@ async def proxy_video(
         if not os.path.exists(video_path):
             raise Exception("Video file not created")
         
-        print(f"Downloaded codec: {video_codec}")
+        print(f"Downloaded codec: {video_codec} (no transcoding - client will decode)")
         
-        # Check if we need to re-encode HEVC to H.264
-        # If codec unknown, probe the actual file
-        is_hevc = False
-        if video_codec:
-            is_hevc = any(x in video_codec.lower() for x in ['hevc', 'hev1', 'hvc1', 'h265', 'h.265'])
-        else:
-            # Try probing with yt-dlp's ffprobe
-            try:
-                probe_cmd = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', 
-                            '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', video_path]
-                probe_result = subprocess.run(probe_cmd, capture_output=True, timeout=10)
-                detected_codec = probe_result.stdout.decode().strip().lower()
-                is_hevc = 'hevc' in detected_codec or 'h265' in detected_codec
-                print(f"Probed codec: {detected_codec}")
-            except Exception as probe_err:
-                print(f"Probe failed: {probe_err}")
-        
-        if is_hevc:
-            print(f"HEVC detected, re-encoding to H.264 for browser compatibility...")
-            h264_path = os.path.join(temp_dir, "video_h264.mp4")
-            
-            def reencode_to_h264():
-                # Use ffmpeg to re-encode from HEVC to H.264
-                cmd = [
-                    'ffmpeg', '-y',
-                    '-i', video_path,
-                    '-c:v', 'libx264',  # H.264 codec
-                    '-preset', 'fast',   # Balance speed and quality
-                    '-crf', '23',        # Quality (lower = better, 18-28 is good)
-                    '-c:a', 'aac',       # AAC audio
-                    '-movflags', '+faststart',  # Web optimization
-                    h264_path
-                ]
-                try:
-                    result = subprocess.run(cmd, capture_output=True, timeout=120)
-                    if result.returncode != 0:
-                        print(f"FFmpeg error: {result.stderr.decode()[:200]}")
-                        return None
-                    return h264_path
-                except FileNotFoundError:
-                    print("FFmpeg not installed, trying yt-dlp postprocessor...")
-                    # Fallback: re-download with recode postprocessor
-                    recode_opts = ydl_opts.copy()
-                    recode_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
-                    recode_opts['postprocessor_args'] = ['-c:v', 'libx264', '-preset', 'fast', '-crf', '23']
-                    recode_opts['outtmpl'] = h264_path.replace('.mp4', '.%(ext)s')
-                    try:
-                        with yt_dlp.YoutubeDL(recode_opts) as ydl:
-                            ydl.download([url])
-                        return h264_path if os.path.exists(h264_path) else None
-                    except:
-                        return None
-            
-            reencoded_path = await loop.run_in_executor(None, reencode_to_h264)
-            
-            if reencoded_path and os.path.exists(reencoded_path):
-                video_path = reencoded_path
-                print("Re-encoding successful!")
-            else:
-                print("Re-encoding failed, using original video")
-        
-        # Save to cache for future requests
+        # Save to cache directly - NO TRANSCODING
         cached_path = save_to_cache(url, video_path)
         stats = get_cache_stats()
         print(f"CACHED: {url[:50]}... ({stats['files']} files, {stats['size_mb']}MB total)")
@@ -349,8 +290,12 @@ async def proxy_video(
         os.unlink(cookie_file_path)
     shutil.rmtree(temp_dir, ignore_errors=True)
     
-    # Return from cache
-    response_headers = {}
+    # Return from cache with codec info header
+    response_headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=3600",
+        "X-Video-Codec": video_codec,  # Let client know the codec
+    }
     if download:
         video_id_match = re.search(r'/video/(\d+)', url)
         video_id = video_id_match.group(1) if video_id_match else "tiktok_video"
@@ -361,6 +306,7 @@ async def proxy_video(
         media_type="video/mp4",
         headers=response_headers
     )
+
 
 
 @router.get("/thin-proxy")

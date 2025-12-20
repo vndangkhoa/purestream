@@ -1,8 +1,15 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Download, UserPlus, Check, Volume2, VolumeX } from 'lucide-react';
+import { Download, UserPlus, Check, Volume2, VolumeX, AlertCircle } from 'lucide-react';
 import type { Video } from '../types';
 import { API_BASE_URL } from '../config';
 import { videoCache } from '../utils/videoCache';
+
+// Check if browser supports HEVC codec (Safari, Chrome 107+, Edge)
+const supportsHEVC = (): boolean => {
+    if (typeof MediaSource === 'undefined') return false;
+    return MediaSource.isTypeSupported('video/mp4; codecs="hvc1"') ||
+        MediaSource.isTypeSupported('video/mp4; codecs="hev1"');
+};
 
 interface HeartParticle {
     id: number;
@@ -42,9 +49,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [localMuted, setLocalMuted] = useState(true);
     const isMuted = externalMuted !== undefined ? externalMuted : localMuted;
     const [hearts, setHearts] = useState<HeartParticle[]>([]);
+<<<<<<< HEAD
     const [isLoading, setIsLoading] = useState(true);
     const [cachedUrl, setCachedUrl] = useState<string | null>(null);
+=======
+    const [isLoading, setIsLoading] = useState(true);  // Show loading spinner until video is ready
+    const [codecError, setCodecError] = useState(false);  // True if video codec not supported
+>>>>>>> 6153739 (feat: client-side video optimization - remove server transcoding for instant loading and zero CPU)
     const lastTapRef = useRef<number>(0);
+    const browserSupportsHEVC = useRef(supportsHEVC());
 
     const fullProxyUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}`;
     const thinProxyUrl = video.cdn_url ? `${API_BASE_URL}/feed/thin-proxy?cdn_url=${encodeURIComponent(video.cdn_url)}` : null;
@@ -106,6 +119,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     // Reset fallback and loading state when video changes
     useEffect(() => {
         setUseFallback(false);
+<<<<<<< HEAD
         setIsLoading(true);
         setCachedUrl(null);
 
@@ -118,6 +132,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         };
 
         checkCache();
+=======
+        setIsLoading(true);  // Show loading for new video
+        setCodecError(false);  // Reset codec error for new video
+>>>>>>> 6153739 (feat: client-side video optimization - remove server transcoding for instant loading and zero CPU)
     }, [video.id]);
 
     // Progress tracking
@@ -134,7 +152,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         };
 
         // Fallback on error - if thin proxy fails, switch to full proxy
-        const handleError = () => {
+        // Also detect codec errors for graceful fallback UI
+        const handleError = (e: Event) => {
+            const videoEl = e.target as HTMLVideoElement;
+            const error = videoEl?.error;
+
+            // Check if this is a codec/decode error (MEDIA_ERR_DECODE = 3)
+            if (error?.code === 3 || error?.code === 4) {
+                console.log(`Codec error detected (code ${error.code}):`, error.message);
+                // Only show codec error if browser doesn't support HEVC
+                if (!browserSupportsHEVC.current) {
+                    setCodecError(true);
+                    setIsLoading(false);
+                    return;
+                }
+            }
+
             if (thinProxyUrl && !useFallback) {
                 console.log('Thin proxy failed, falling back to full proxy...');
                 setUseFallback(true);
@@ -329,13 +362,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             onClick={handleVideoClick}
             onTouchStart={handleTouchStart}
         >
-            {/* Video Element */}
+            {/* Video Element - preload="metadata" for instant player readiness */}
             <video
                 ref={videoRef}
                 src={proxyUrl}
                 loop
                 playsInline
-                preload="auto"
+                preload="metadata"
                 muted={isMuted}
                 className="w-full h-full"
                 style={{ objectFit }}
@@ -345,13 +378,32 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             />
 
             {/* Loading Overlay - Subtle pulsing logo */}
-            {isLoading && (
+            {isLoading && !codecError && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-20">
                     <div className="w-16 h-16 bg-gradient-to-r from-cyan-400/80 to-pink-500/80 rounded-2xl flex items-center justify-center animate-pulse">
                         <svg className="w-8 h-8 text-white" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
                         </svg>
                     </div>
+                </div>
+            )}
+
+            {/* Codec Error Fallback - Graceful UI for unsupported video codecs */}
+            {codecError && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20 p-6 text-center">
+                    <AlertCircle className="w-12 h-12 text-amber-400 mb-3" />
+                    <h3 className="text-white font-semibold text-lg mb-2">Video Format Not Supported</h3>
+                    <p className="text-white/60 text-sm mb-4 max-w-xs">
+                        This video uses HEVC codec. Try Safari, Chrome 107+, or download to watch.
+                    </p>
+                    <a
+                        href={downloadUrl}
+                        download
+                        className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-pink-500 text-white text-sm font-medium rounded-full hover:opacity-90 transition-opacity"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        Download Video
+                    </a>
                 </div>
             )}
 
