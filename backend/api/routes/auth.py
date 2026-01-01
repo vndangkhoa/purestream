@@ -100,10 +100,19 @@ async def auth_status():
         try:
             with open(COOKIES_FILE, "r") as f:
                 cookies = json.load(f)
-                has_session = "sessionid" in cookies
+                # Handle both dict and list formats
+                if isinstance(cookies, dict):
+                    has_session = "sessionid" in cookies
+                    cookie_count = len(cookies)
+                elif isinstance(cookies, list):
+                    has_session = any(c.get("name") == "sessionid" for c in cookies if isinstance(c, dict))
+                    cookie_count = len(cookies)
+                else:
+                    has_session = False
+                    cookie_count = 0
                 return {
                     "authenticated": has_session,
-                    "cookie_count": len(cookies)
+                    "cookie_count": cookie_count
                 }
         except:
             pass
