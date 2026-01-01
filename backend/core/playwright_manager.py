@@ -131,7 +131,27 @@ class PlaywrightManager:
                 with open(COOKIES_FILE, "r") as f:
                     data = json.load(f)
                     if isinstance(data, list):
-                        cookies = data
+                        # Sanitize each cookie for Playwright compatibility
+                        for c in data:
+                            if isinstance(c, dict) and "name" in c and "value" in c:
+                                cookie = {
+                                    "name": c["name"],
+                                    "value": str(c["value"]),
+                                    "domain": c.get("domain") or ".tiktok.com",
+                                    "path": c.get("path") or "/",
+                                }
+                                # Only add optional fields if they have valid values
+                                if c.get("secure") is not None:
+                                    cookie["secure"] = bool(c["secure"])
+                                if c.get("httpOnly") is not None:
+                                    cookie["httpOnly"] = bool(c["httpOnly"])
+                                # Sanitize sameSite - Playwright only accepts Strict|Lax|None
+                                if c.get("sameSite"):
+                                    ss = str(c["sameSite"]).capitalize()
+                                    if ss in ["Strict", "Lax", "None"]:
+                                        cookie["sameSite"] = ss
+                                    # If invalid, just omit it
+                                cookies.append(cookie)
                     elif isinstance(data, dict):
                         # Backward compatibility or simple dict format
                         for name, value in data.items():
