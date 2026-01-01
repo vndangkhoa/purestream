@@ -84,19 +84,6 @@ const SUGGESTED_ACCOUNTS = [
     { username: '@taylerholder', label: '🔥 Tayler Holder' },
 ];
 
-
-// Inspirational quotes for loading states
-const INSPIRATION_QUOTES = [
-    { text: "Dance like nobody's watching", author: "William W. Purkey" },
-    { text: "Life is short, make every moment count", author: "Unknown" },
-    { text: "Create the things you wish existed", author: "Unknown" },
-    { text: "Be yourself; everyone else is taken", author: "Oscar Wilde" },
-    { text: "Stay hungry, stay foolish", author: "Steve Jobs" },
-    { text: "The only way to do great work is to love what you do", author: "Steve Jobs" },
-    { text: "Dream big, start small", author: "Unknown" },
-    { text: "Creativity takes courage", author: "Henri Matisse" },
-];
-
 // NOTE: Keyword search is now handled by the backend /api/user/search endpoint
 
 export const Feed: React.FC = () => {
