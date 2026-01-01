@@ -18,8 +18,10 @@ class BrowserLoginResponse(BaseModel):
     cookie_count: int = 0
 
 
+from typing import Any
+
 class CredentialsRequest(BaseModel):
-    credentials: dict  # JSON credentials in http.headers format
+    credentials: Any  # Accept both dict and list
 
 
 class CredentialLoginRequest(BaseModel):
@@ -79,9 +81,8 @@ async def save_credentials(request: CredentialsRequest):
         if not cookies:
             raise HTTPException(status_code=400, detail="No cookies found in credentials")
         
-        # Convert to dict format for storage
-        cookie_dict = {c["name"]: c["value"] for c in cookies}
-        PlaywrightManager.save_credentials(cookie_dict, user_agent)
+        # Save full cookie list with domains/paths preserved
+        PlaywrightManager.save_credentials(cookies, user_agent)
         
         return {
             "status": "success",
@@ -187,22 +188,30 @@ async def admin_update_cookies(request: AdminCookiesRequest, token: str = ""):
     try:
         cookies = request.cookies
         
-        # Normalize cookies to dict format
+        # Preserve list if it contains metadata (like domain)
         if isinstance(cookies, list):
-            # Cookie-Editor export format: [{"name": "...", "value": "..."}, ...]
-            cookie_dict = {}
-            for c in cookies:
-                if isinstance(c, dict) and "name" in c and "value" in c:
-                    cookie_dict[c["name"]] = c["value"]
-            cookies = cookie_dict
+            # Check if this is a simple name-value list or full objects
+            if len(cookies) > 0 and isinstance(cookies[0], dict) and "domain" not in cookies[0]:
+                cookie_dict = {}
+                for c in cookies:
+                    if isinstance(c, dict) and "name" in c and "value" in c:
+                        cookie_dict[c["name"]] = c["value"]
+                cookies = cookie_dict
         
-        if not isinstance(cookies, dict):
+        if not isinstance(cookies, (dict, list)):
             raise HTTPException(status_code=400, detail="Invalid cookies format")
         
-        if "sessionid" not in cookies:
+        # Check for sessionid in both formats
+        has_session = False
+        if isinstance(cookies, dict):
+            has_session = "sessionid" in cookies
+        else:
+            has_session = any(c.get("name") == "sessionid" for c in cookies if isinstance(c, dict))
+            
+        if not has_session:
             raise HTTPException(status_code=400, detail="Missing 'sessionid' cookie - this is required")
         
-        # Save cookies
+        # Save cookies (either dict or list)
         PlaywrightManager.save_credentials(cookies, None)
         
         return {

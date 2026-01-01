@@ -85,6 +85,12 @@ class VideoPrefetcher {
       return;
     }
 
+    const API_BASE_URL = 'http://localhost:8002/api'; // Hardcoded or imported from config
+    const fullProxyUrl = `${API_BASE_URL}/feed/proxy?url=${encodeURIComponent(video.url)}`;
+    // Use thin proxy if available for better performance
+    const thinProxyUrl = video.cdn_url ? `${API_BASE_URL}/feed/thin-proxy?cdn_url=${encodeURIComponent(video.cdn_url)}` : null;
+    const targetUrl = thinProxyUrl || fullProxyUrl;
+
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(
@@ -92,7 +98,7 @@ class VideoPrefetcher {
         this.config.timeoutMs
       );
 
-      const response = await fetch(video.url, {
+      const response = await fetch(targetUrl, {
         signal: controller.signal,
         headers: { Range: 'bytes=0-1048576' }
       });

@@ -63,3 +63,36 @@ async def remove_following(username: str):
         save_following(following)
     
     return {"status": "success", "following": following}
+
+
+@router.get("/feed")
+async def get_following_feed(limit_per_user: int = 5):
+    """
+    Get a combined feed of videos from all followed creators.
+    """
+    from core.playwright_manager import PlaywrightManager
+    import asyncio
+    
+    following = load_following()
+    if not following:
+        return []
+    
+    # Load stored credentials
+    cookies, user_agent = PlaywrightManager.load_stored_credentials()
+    
+    if not cookies:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    tasks = [PlaywrightManager.fetch_user_videos(user, cookies, user_agent, limit_per_user) for user in following]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    all_videos = []
+    for result in results:
+        if isinstance(result, list):
+            all_videos.extend(result)
+    
+    # Shuffle results to make it look like a feed
+    import random
+    random.shuffle(all_videos)
+    
+    return all_videos

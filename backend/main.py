@@ -5,15 +5,39 @@ from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from pathlib import Path
 from api.routes import auth, feed, download, following, config, user
+import sys
+import asyncio
+
+# Force Proactor on Windows for Playwright
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     print("🚀 Starting PureStream API (Network Interception Mode)...")
+    import asyncio
+    try:
+        loop = asyncio.get_running_loop()
+        print(f"DEBUG: Running event loop: {type(loop)}")
+    except Exception as e:
+        print(f"DEBUG: Could not get running loop: {e}")
     yield
     print("👋 Shutting down PureStream API...")
 
+import asyncio
+import sys
+
 app = FastAPI(title="PureStream API", version="2.0.0", lifespan=lifespan)
+
+if __name__ == "__main__":
+    if sys.platform == "win32":
+        try:
+            loop = asyncio.get_event_loop()
+            print(f"DEBUG: Current event loop: {type(loop)}")
+        except:
+             print("DEBUG: No event loop yet")
+             
 
 # CORS middleware
 app.add_middleware(
@@ -54,5 +78,5 @@ if FRONTEND_DIR.exists():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8002, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8002, reload=False, loop="asyncio")
 

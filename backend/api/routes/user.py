@@ -108,7 +108,7 @@ async def get_multiple_profiles(usernames: str = Query(..., description="Comma-s
 @router.get("/videos")
 async def get_user_videos(
     username: str = Query(..., description="TikTok username (without @)"),
-    limit: int = Query(10, description="Max videos to fetch", ge=1, le=30)
+    limit: int = Query(10, description="Max videos to fetch", ge=1, le=60)
 ):
     """
     Fetch videos from a TikTok user's profile.
@@ -135,7 +135,8 @@ async def get_user_videos(
 @router.get("/search")
 async def search_videos(
     query: str = Query(..., description="Search keyword or hashtag"),
-    limit: int = Query(12, description="Max videos to fetch", ge=1, le=30)
+    limit: int = Query(20, description="Max videos to fetch", ge=1, le=60),
+    cursor: int = Query(0, description="Pagination cursor (offset)")
 ):
     """
     Search for videos by keyword or hashtag.
@@ -147,11 +148,11 @@ async def search_videos(
     if not cookies:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
-    print(f"Searching for: {query}...")
+    print(f"Searching for: {query} (limit={limit}, cursor={cursor})...")
     
     try:
-        videos = await PlaywrightManager.search_videos(query, cookies, user_agent, limit)
-        return {"query": query, "videos": videos, "count": len(videos)}
+        videos = await PlaywrightManager.search_videos(query, cookies, user_agent, limit, cursor)
+        return {"query": query, "videos": videos, "count": len(videos), "cursor": cursor + len(videos)}
     except Exception as e:
         print(f"Error searching for {query}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

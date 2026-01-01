@@ -41,7 +41,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const progressBarRef = useRef<HTMLDivElement>(null);
     const [isPaused, setIsPaused] = useState(false);
     const [showControls, setShowControls] = useState(false);
-    const [objectFit, setObjectFit] = useState<'cover' | 'contain'>('contain');
+    const [objectFit] = useState<'cover' | 'contain'>('contain');
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
     const [isSeeking, setIsSeeking] = useState(false);
@@ -112,12 +112,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isActive]);
 
+    const [showSidebar, setShowSidebar] = useState(false);
+
     // Reset fallback and loading state when video changes
     useEffect(() => {
         setUseFallback(false);
         setIsLoading(true);  // Show loading for new video
         setCodecError(false);  // Reset codec error for new video
         setCachedUrl(null);
+        setShowSidebar(false); // Reset sidebar for new video
 
         const checkCache = async () => {
             const cached = await videoCache.get(video.url);
@@ -209,9 +212,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     };
 
-    const toggleObjectFit = () => {
-        setObjectFit(prev => prev === 'contain' ? 'cover' : 'contain');
-    };
 
     const toggleMute = (e: React.MouseEvent | React.TouchEvent) => {
         e.stopPropagation();  // Prevent video tap
@@ -246,6 +246,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         touches.forEach((touch, index) => {
             const timeSinceLastTap = now - lastTapRef.current;
+
+            // Swipe Left from right edge check (to open sidebar)
+            const rectWidth = rect.width;
+            const startX = touch.clientX - rect.left;
+
+            // If touch starts near right edge (last 15% of screen)
+            if (startX > rectWidth * 0.85 && touches.length === 1) {
+                // We'll handle the actual swipe logic in touchMove/End, 
+                // but setting a flag or using the existing click logic might be easier.
+                // For now, let's allow a simple tap on the edge to toggle too, as per existing click logic.
+            }
 
             // Show heart if:
             // 1. Double tap (< 400ms)
@@ -295,6 +306,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 const rect = containerRef.current.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
+
+                // If clicked on the right edge, toggle sidebar
+                if (x > rect.width * 0.9) {
+                    setShowSidebar(prev => !prev);
+                    return;
+                }
+
                 const heartId = Date.now() + Math.random();
                 setHearts(prev => [...prev, { id: heartId, x, y }]);
                 setTimeout(() => {
@@ -460,15 +478,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 )}
             </div>
 
-            {/* Side Controls */}
+            {/* Side Controls - Hidden by default, reveal on swipe/interaction */}
             <div
-                className={`absolute bottom-36 right-4 flex flex-col gap-3 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'
+                className={`absolute bottom-36 right-4 flex flex-col gap-3 transition-all duration-300 transform ${showSidebar ? 'translate-x-0 opacity-100' : 'translate-x-[200%] opacity-0'
                     }`}
             >
                 {/* Follow Button */}
                 {onFollow && (
                     <button
-                        onClick={() => onFollow(video.author)}
+                        onClick={(e) => { e.stopPropagation(); onFollow(video.author); }}
                         className={`w-12 h-12 flex items-center justify-center backdrop-blur-xl border border-white/10 rounded-full transition-all ${isFollowing
                             ? 'bg-pink-500 text-white'
                             : 'bg-white/10 hover:bg-white/20 text-white'
@@ -488,15 +506,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 >
                     <Download size={20} />
                 </a>
-
-                {/* Object Fit Toggle */}
-                <button
-                    onClick={toggleObjectFit}
-                    className="w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/10 rounded-full text-white text-xs font-bold transition-all"
-                    title={objectFit === 'contain' ? 'Fill Screen' : 'Fit Content'}
-                >
-                    {objectFit === 'contain' ? '⛶' : '⊡'}
-                </button>
 
                 {/* Mute Toggle */}
                 <button
@@ -544,6 +553,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
             {/* Bottom Gradient */}
             <div className="absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+
+            {/* Right Sidebar Hint - Small vertical bar/glow on edge */}
+            <div
+                className={`absolute top-0 right-0 w-6 h-full z-40 flex items-center justify-end cursor-pointer ${showSidebar ? 'pointer-events-none' : ''}`}
+                onClick={(e) => { e.stopPropagation(); setShowSidebar(true); }}
+                onTouchEnd={() => {
+                    // Check if it was a swipe logic here or just rely on the click/tap
+                    setShowSidebar(true);
+                }}
+            >
+                {/* Visual Hint */}
+                <div className="w-1 h-12 bg-white/20 rounded-full mr-1 shadow-[0_0_10px_rgba(255,255,255,0.3)] animate-pulse" />
+            </div>
         </div>
     );
 };

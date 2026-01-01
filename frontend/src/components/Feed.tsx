@@ -3,7 +3,7 @@ import { VideoPlayer } from './VideoPlayer';
 import type { Video, UserProfile } from '../types';
 import axios from 'axios';
 import { API_BASE_URL } from '../config';
-import { Home, Users, Search, X, Plus } from 'lucide-react';
+import { Search, X, Plus } from 'lucide-react';
 import { videoPrefetcher } from '../utils/videoPrefetch';
 import { feedLoader } from '../utils/feedLoader';
 
@@ -104,8 +104,11 @@ export const Feed: React.FC = () => {
     const [activeTab, setActiveTab] = useState<TabType>('foryou');
     const [videos, setVideos] = useState<Video[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
-    const [error, setError] = useState<string | null>(null);
-    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [searchCursor, setSearchCursor] = useState(0);
+    const [searchHasMore, setSearchHasMore] = useState(true);
+    const [isInSearchPlayback, setIsInSearchPlayback] = useState(false);
+    const [originalVideos, setOriginalVideos] = useState<Video[]>([]);
+    const [originalIndex, setOriginalIndex] = useState(0);
     const [jsonInput, setJsonInput] = useState('');
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -116,12 +119,17 @@ export const Feed: React.FC = () => {
     // Suggested profiles with real data
     const [suggestedProfiles, setSuggestedProfiles] = useState<UserProfile[]>([]);
     const [loadingProfiles, setLoadingProfiles] = useState(false);
-    const [suggestedLimit, setSuggestedLimit] = useState(12); // Lazy load - start with 12
+    const [suggestedLimit, setSuggestedLimit] = useState(12);
+    const [showHeader, setShowHeader] = useState(false);
+    const [isFollowingFeed, setIsFollowingFeed] = useState(false);
+    // Lazy load - start with 12
 
     // Search state
     const [searchInput, setSearchInput] = useState('');
     const [searchResults, setSearchResults] = useState<Video[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [showAdvanced, setShowAdvanced] = useState(false);
 
     // Global mute state - persists across video scrolling
     const [isMuted, setIsMuted] = useState(true);
@@ -131,6 +139,7 @@ export const Feed: React.FC = () => {
     const touchEnd = useRef<number | null>(null);
     const minSwipeDistance = 50;
 
+    // Touch Handling (Mobile)
     const onTouchStart = (e: React.TouchEvent) => {
         touchEnd.current = null;
         touchStart.current = e.targetTouches[0].clientX;
@@ -141,18 +150,51 @@ export const Feed: React.FC = () => {
     };
 
     const onTouchEnd = () => {
+        handleSwipeEnd();
+    };
+
+    // Mouse Handling (Desktop)
+    const onMouseDown = (e: React.MouseEvent) => {
+        touchEnd.current = null;
+        touchStart.current = e.clientX;
+    };
+
+    const onMouseMove = (e: React.MouseEvent) => {
+        if (e.buttons === 1) { // Only track if left button held
+            touchEnd.current = e.clientX;
+        }
+    };
+
+    const onMouseUp = () => {
+        if (touchStart.current) {
+            // Handle click vs swipe
+            // If minimal movement, treat as click/tap (handled by onClick elsewhere, but for header toggle we need it here?)
+            // Actually, onMouseUp is better for swipe end.
+            handleSwipeEnd();
+        }
+        touchStart.current = null;
+        touchEnd.current = null;
+    };
+
+    const handleSwipeEnd = () => {
         if (!touchStart.current || !touchEnd.current) return;
-        const distance = touchStart.current - touchEnd.current;
-        const isLeftSwipe = distance > minSwipeDistance;
-        const isRightSwipe = distance < -minSwipeDistance;
+
+        const distanceX = touchStart.current - touchEnd.current;
+        const isLeftSwipe = distanceX > minSwipeDistance;
+        const isRightSwipe = distanceX < -minSwipeDistance;
 
         if (isLeftSwipe) {
-            if (activeTab === 'foryou') setActiveTab('following');
-            else if (activeTab === 'following') setActiveTab('search');
+            if (activeTab === 'foryou') { setActiveTab('following'); setShowHeader(true); }
+            else if (activeTab === 'following') { setActiveTab('search'); setShowHeader(true); }
+        } else if (isRightSwipe) {
+            if (activeTab === 'search') { setActiveTab('following'); setShowHeader(true); }
+            else if (activeTab === 'following') { setActiveTab('foryou'); setShowHeader(true); }
+        } else {
+            // Minor movement - Do nothing (Tap is handled by video click)
         }
-        if (isRightSwipe) {
-            if (activeTab === 'search') setActiveTab('following');
-            else if (activeTab === 'following') setActiveTab('foryou');
+
+        if (activeTab === 'foryou') {
+            setTimeout(() => setShowHeader(false), 3000);
         }
     };
 
@@ -209,6 +251,21 @@ export const Feed: React.FC = () => {
         prefetch();
     }, [currentIndex, videos, activeTab]);
 
+    // Scrolls to the current index when the videos list changes or when we enter/exit search playback
+    // This fixes the "blur screen" bug where the previous scroll position persisted after swapping video lists
+    useEffect(() => {
+        if (activeTab === 'foryou' && containerRef.current && videos.length > 0) {
+            const targetScroll = currentIndex * containerRef.current.clientHeight;
+            // Only scroll if significantly off (allow small manual adjustments)
+            if (Math.abs(containerRef.current.scrollTop - targetScroll) > 50) {
+                containerRef.current.scrollTo({
+                    top: targetScroll,
+                    behavior: 'auto' // Instant jump to prevent weird visual sliding on list swap
+                });
+            }
+        }
+    }, [videos, activeTab, isInSearchPlayback]); // Dependencies needed to trigger on list swap
+
     const loadSuggestedProfiles = async () => {
         setLoadingProfiles(true);
         try {
@@ -257,10 +314,28 @@ export const Feed: React.FC = () => {
 
     const loadFollowing = async () => {
         try {
-            const res = await axios.get(`${API_BASE_URL}/following`);
-            setFollowing(res.data);
-        } catch (err) {
-            console.error('Failed to load following');
+            const { data } = await axios.get(`${API_BASE_URL}/following`);
+            setFollowing(data);
+
+            // If on following tab, load actual feed instead of just profiles
+            if (activeTab === 'following') {
+                setIsFetching(true);
+                try {
+                    const res = await axios.get(`${API_BASE_URL}/following/feed`);
+                    if (res.data && res.data.length > 0) {
+                        setVideos(res.data);
+                        setCurrentIndex(0);
+                        setIsFollowingFeed(true);
+                        setActiveTab('foryou'); // Switch to feed view but with following content
+                    }
+                } catch (e) {
+                    console.error('Error loading following feed:', e);
+                } finally {
+                    setIsFetching(false);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading following list:', error);
         }
     };
 
@@ -396,225 +471,66 @@ export const Feed: React.FC = () => {
         setViewState('login');
     };
 
-    // Direct username search - bypasses state update delay
-    // Falls back to keyword search if user not found
+    // Direct username search
     const searchByUsername = async (username: string) => {
         setSearchInput(`@${username}`);
         setActiveTab('search');
-        setIsSearching(true);
-        setSearchResults([]);
-
-        try {
-            const res = await axios.get(`${API_BASE_URL}/user/videos?username=${username}&limit=12`);
-            const userVideos = res.data.videos as Video[];
-
-            if (userVideos.length > 0) {
-                setSearchResults(userVideos);
-            } else {
-                // No videos from user profile, try keyword search
-                console.log(`No videos from @${username}, trying keyword search...`);
-                await fallbackToKeywordSearch(username);
-            }
-        } catch (err) {
-            console.error('Error fetching user videos, trying keyword search:', err);
-            // User not found or error - fallback to keyword search
-            await fallbackToKeywordSearch(username);
-        } finally {
-            setIsSearching(false);
-        }
+        handleSearch(false, `@${username}`);
     };
 
-    // Fallback search when user profile fails
-    const fallbackToKeywordSearch = async (keyword: string) => {
-        try {
-            const res = await axios.get(`${API_BASE_URL}/user/search?query=${encodeURIComponent(keyword)}&limit=12`);
-            const searchVideos = res.data.videos as Video[];
-
-            if (searchVideos.length > 0) {
-                setSearchResults(searchVideos);
-            } else {
-                // Still no results - show friendly message
-                setSearchResults([{
-                    id: `no-results-${keyword}`,
-                    url: '',
-                    author: 'search',
-                    description: `No videos found for "${keyword}". Try a different search term.`
-                }]);
-            }
-        } catch (searchErr) {
-            console.error('Keyword search also failed:', searchErr);
-            setSearchResults([{
-                id: `search-error`,
-                url: '',
-                author: 'search',
-                description: `Search is temporarily unavailable. Please try again later.`
-            }]);
-        }
-    };
-
-    // Direct keyword search - bypasses state update delay
+    // Direct keyword search
     const searchByKeyword = async (keyword: string) => {
         setSearchInput(keyword);
         setActiveTab('search');
+        handleSearch(false, keyword);
+    };
+
+    const handleSearch = async (isMore = false, overrideInput?: string) => {
+        const inputToSearch = overrideInput || searchInput;
+        if (!inputToSearch.trim() || isSearching) return;
+
         setIsSearching(true);
-        setSearchResults([]);
+        setError(null);
 
         try {
-            const res = await axios.get(`${API_BASE_URL}/user/search?query=${encodeURIComponent(keyword)}&limit=12`);
-            const searchVideos = res.data.videos as Video[];
+            const cursor = isMore ? searchCursor : 0;
+            // "Search must show at least 50 result" - fetching 50 at a time with infinite scroll
+            const limit = 50;
 
-            if (searchVideos.length > 0) {
-                setSearchResults(searchVideos);
-            } else {
-                setSearchResults([{
-                    id: `no-results`,
-                    url: '',
-                    author: 'search',
-                    description: `No videos found for "${keyword}"`
-                }]);
+            let endpoint = `${API_BASE_URL}/user/search?query=${encodeURIComponent(inputToSearch)}&limit=${limit}&cursor=${cursor}`;
+
+            // If direct username search
+            if (inputToSearch.startsWith('@')) {
+                endpoint = `${API_BASE_URL}/user/videos?username=${inputToSearch.substring(1)}&limit=${limit}`;
             }
+
+            const { data } = await axios.get(endpoint);
+            const newVideos = data.videos || [];
+
+            if (isMore) {
+                setSearchResults(prev => [...prev, ...newVideos]);
+            } else {
+                setSearchResults(newVideos);
+            }
+
+            setSearchCursor(data.cursor || 0);
+            // If we got results, assume there's more (TikTok has endless content)
+            // unless the count is very small (e.g. < 5) which might indicate end
+            setSearchHasMore(newVideos.length >= 5);
+
         } catch (err) {
-            console.error('Error searching:', err);
-            setSearchResults([{
-                id: `error-search`,
-                url: '',
-                author: 'search',
-                description: `Search failed`
-            }]);
+            console.error('Search failed:', err);
+            setError('Search failed. Please try again.');
         } finally {
             setIsSearching(false);
         }
     };
-    const handleSearch = async () => {
-        if (!searchInput.trim()) return;
 
-        setIsSearching(true);
-        let input = searchInput.trim();
-        const results: Video[] = [];
-
-        // ========== PARSE INPUT TYPE ==========
-
-        // Type 1: Full TikTok video URL (tiktok.com/@user/video/123)
-        const videoUrlMatch = input.match(/tiktok\.com\/@([\w.]+)\/video\/(\d+)/);
-        if (videoUrlMatch) {
-            const [, author, videoId] = videoUrlMatch;
-            results.push({
-                id: videoId,
-                url: input.startsWith('http') ? input : `https://www.${input}`,
-                author: author,
-                description: `Video ${videoId} by @${author}`
-            });
+    const handleSearchScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+        if (scrollHeight - scrollTop <= clientHeight + 100 && searchHasMore && !isSearching) {
+            handleSearch(true);
         }
-
-        // Type 2: Short share links (vm.tiktok.com, vt.tiktok.com)
-        else if (input.includes('vm.tiktok.com') || input.includes('vt.tiktok.com')) {
-            // These are short links - add as-is, backend will resolve
-            const shortId = input.split('/').pop() || 'unknown';
-            results.push({
-                id: `short-${shortId}`,
-                url: input.startsWith('http') ? input : `https://${input}`,
-                author: 'unknown',
-                description: 'Shared TikTok video (click to watch)'
-            });
-        }
-
-        // Type 3: Username (@user or just user) - Fetch user's videos
-        else if (input.startsWith('@') || /^[\w.]+$/.test(input)) {
-            const username = input.replace('@', '');
-
-            // Show loading state
-            results.push({
-                id: `loading-${username}`,
-                url: '',
-                author: username,
-                description: `⏳ Loading videos from @${username}...`
-            });
-            setSearchResults(results);
-
-            // Fetch user's videos from backend
-            try {
-                const res = await axios.get(`${API_BASE_URL}/user/videos?username=${username}&limit=12`);
-                const userVideos = res.data.videos as Video[];
-
-                if (userVideos.length > 0) {
-                    // Replace loading with actual videos
-                    setSearchResults(userVideos);
-                    setIsSearching(false);
-                    return;
-                } else {
-                    // No videos found
-                    setSearchResults([{
-                        id: `no-videos-${username}`,
-                        url: '',
-                        author: username,
-                        description: `No videos found for @${username}`
-                    }]);
-                    setIsSearching(false);
-                    return;
-                }
-            } catch (err) {
-                console.error('Error fetching user videos:', err);
-                // Fallback message
-                setSearchResults([{
-                    id: `error-${username}`,
-                    url: '',
-                    author: username,
-                    description: `Could not fetch videos`
-                }]);
-                setIsSearching(false);
-                return;
-            }
-        }
-
-        // Type 4: Hashtag (#trend) or Generic search term - use search API
-        else {
-            // Show loading for keyword search
-            results.push({
-                id: `loading-search`,
-                url: '',
-                author: 'search',
-                description: `Searching for "${input}"...`
-            });
-            setSearchResults(results);
-
-            // Fetch videos using keyword search API
-            try {
-                const res = await axios.get(`${API_BASE_URL}/user/search?query=${encodeURIComponent(input)}&limit=12`);
-                const searchVideos = res.data.videos as Video[];
-
-                if (searchVideos.length > 0) {
-                    setSearchResults(searchVideos);
-                    setIsSearching(false);
-                    return;
-                } else {
-                    setSearchResults([{
-                        id: `no-results`,
-                        url: '',
-                        author: 'search',
-                        description: `No videos found for "${input}"`
-                    }]);
-                    setIsSearching(false);
-                    return;
-                }
-            } catch (err) {
-                console.error('Error searching:', err);
-                setSearchResults([{
-                    id: `error-search`,
-                    url: '',
-                    author: 'search',
-                    description: `Search failed. Try a different term.`
-                }]);
-                setIsSearching(false);
-                return;
-            }
-        }
-
-        setSearchResults(results);
-        setIsSearching(false);
-
-        // Log for debugging
-        console.log('Search input:', input);
-        console.log('Search results:', results);
     };
 
     // ========== LOGIN VIEW ==========
@@ -760,8 +676,6 @@ export const Feed: React.FC = () => {
         );
     }
 
-
-
     // ========== FEED VIEW WITH TABS ==========
     return (
         <div
@@ -769,58 +683,68 @@ export const Feed: React.FC = () => {
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}
+            onMouseDown={onMouseDown}
+            onMouseMove={onMouseMove}
+            onMouseUp={onMouseUp}
         >
             {/* Tab Navigation */}
-            <div className="absolute top-0 left-0 right-0 z-50 flex justify-center pt-4 pb-2 bg-gradient-to-b from-black via-black/80 to-transparent">
-                <div className="flex gap-1 bg-white/10 backdrop-blur-md rounded-full p-1">
+            {/* Tab Navigation - Hidden by default, show on toggle/swipe */}
+            <div className={`absolute top-0 left-0 right-0 z-50 flex justify-center pt-4 pb-2 transition-all duration-300 ${showHeader ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'}`}>
+                <div className="flex gap-1 bg-black/40 backdrop-blur-md rounded-full p-1 border border-white/5 shadow-2xl">
                     <button
-                        onClick={() => setActiveTab('foryou')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${activeTab === 'foryou'
-                            ? 'bg-white text-black'
-                            : 'text-white/70 hover:text-white'
+                        onClick={() => {
+                            setActiveTab('foryou');
+                            setIsFollowingFeed(false);
+                            if (videos.length === 0) loadFeed();
+                        }}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${activeTab === 'foryou' && !isFollowingFeed
+                            ? 'bg-white/20 text-white shadow-sm'
+                            : 'text-white/60 hover:text-white'
                             }`}
                         title="For You"
                     >
-                        <Home size={16} />
-                        <span className="hidden md:inline">For You</span>
+                        <span className="font-bold">For You</span>
                     </button>
                     <button
                         onClick={() => setActiveTab('following')}
                         className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${activeTab === 'following'
-                            ? 'bg-white text-black'
-                            : 'text-white/70 hover:text-white'
+                            ? 'bg-white/20 text-white shadow-sm'
+                            : 'text-white/60 hover:text-white'
                             }`}
                         title="Following"
                     >
-                        <Users size={16} />
-                        <span className="hidden md:inline">Following</span>
+                        <span className="font-bold">Following</span>
                     </button>
                     <button
                         onClick={() => setActiveTab('search')}
                         className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${activeTab === 'search'
-                            ? 'bg-white text-black'
-                            : 'text-white/70 hover:text-white'
+                            ? 'bg-white/20 text-white shadow-sm'
+                            : 'text-white/60 hover:text-white'
                             }`}
                         title="Search"
                     >
                         <Search size={16} />
-                        <span className="hidden md:inline">Search</span>
                     </button>
                 </div>
             </div>
 
             {/* Logout Button - Left Corner Icon */}
-            <button
-                onClick={handleLogout}
-                className="absolute top-4 left-4 z-50 w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-full text-white transition-colors"
-                title="Logout"
-            >
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-                    <polyline points="16,17 21,12 16,7" />
-                    <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-            </button>
+            {/* Logout Button / Back Button Logic */}
+            {/* "make the go back button on the top right conner, replace, swith from the log out button" */}
+
+            {!isInSearchPlayback ? (
+                <button
+                    onClick={handleLogout}
+                    className={`absolute top-6 right-6 z-50 w-10 h-10 flex items-center justify-center bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white transition-all duration-300 ${showHeader ? 'translate-y-0 opacity-100' : '-translate-y-20 opacity-0'}`}
+                    title="Logout"
+                >
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                        <polyline points="16,17 21,12 16,7" />
+                        <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg>
+                </button>
+            ) : null}
 
             {/* FOR YOU TAB */}
             <div className={`absolute inset-0 w-full h-full transition-all duration-300 ease-out ${activeTab === 'foryou'
@@ -1008,13 +932,15 @@ export const Feed: React.FC = () => {
                 </div>
             </div>
 
-            {/* SEARCH TAB - Minimal Style matching Following */}
+            {/* SEARCH TAB */}
             <div className={`absolute inset-0 w-full h-full pt-16 px-4 pb-6 overflow-y-auto transition-all duration-300 ease-out ${activeTab === 'search'
                 ? 'translate-x-0 opacity-100'
                 : activeTab === 'following' || activeTab === 'foryou'
                     ? 'translate-x-full opacity-0 pointer-events-none'
                     : '-translate-x-full opacity-0 pointer-events-none'
-                }`}>
+                }`}
+                onScroll={handleSearchScroll}
+            >
                 <div className="max-w-lg mx-auto">
                     {/* Minimal Search Input */}
                     <div className="relative mb-8">
@@ -1028,7 +954,7 @@ export const Feed: React.FC = () => {
                             disabled={isSearching}
                         />
                         <button
-                            onClick={handleSearch}
+                            onClick={() => handleSearch()}
                             disabled={isSearching}
                             className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white transition-colors disabled:opacity-50"
                         >
@@ -1043,27 +969,23 @@ export const Feed: React.FC = () => {
                                 </svg>
                             )}
                         </button>
-                        {/* Subtle hint dropdown */}
                         <p className="text-white/20 text-xs mt-2">@username · video link · keyword</p>
                     </div>
 
                     {/* Loading Animation with Quote */}
-                    {isSearching && (
+                    {isSearching && searchResults.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-16">
                             <div className="w-10 h-10 border-2 border-white/10 border-t-cyan-500 rounded-full animate-spin mb-6"></div>
                             <p className="text-white/60 text-sm italic text-center max-w-xs">
                                 "{INSPIRATION_QUOTES[Math.floor(Math.random() * INSPIRATION_QUOTES.length)].text}"
                             </p>
-                            <p className="text-white/30 text-xs mt-2">
-                                — {INSPIRATION_QUOTES[Math.floor(Math.random() * INSPIRATION_QUOTES.length)].author}
-                            </p>
                         </div>
                     )}
 
-                    {/* Empty State - Following-style layout */}
+                    {/* Empty State / Suggestions */}
                     {!isSearching && searchResults.length === 0 && (
                         <>
-                            {/* Trending - 2 columns */}
+                            {/* Trending */}
                             <div className="mb-10">
                                 <p className="text-white/40 text-xs uppercase tracking-wider mb-3">Trending</p>
                                 <div className="grid grid-cols-2 gap-2">
@@ -1078,62 +1000,26 @@ export const Feed: React.FC = () => {
                                     ))}
                                 </div>
                             </div>
-
-                            {/* Quick Search - Account avatars */}
-                            <div>
-                                <p className="text-white/40 text-xs uppercase tracking-wider mb-4">Popular</p>
-                                <div className="grid grid-cols-4 gap-4">
-                                    {(suggestedProfiles.length > 0 ? suggestedProfiles : SUGGESTED_ACCOUNTS.map(a => ({ username: a.username.replace('@', '') }))).slice(0, 4).map((profile: UserProfile | { username: string }) => {
-                                        const username = 'username' in profile ? profile.username : '';
-                                        return (
-                                            <button
-                                                key={username}
-                                                onClick={() => searchByUsername(username)}
-                                                className="flex flex-col items-center gap-2 group"
-                                            >
-                                                {'avatar' in profile && profile.avatar ? (
-                                                    <img
-                                                        src={profile.avatar}
-                                                        alt={username}
-                                                        className="w-12 h-12 rounded-full object-cover border-2 border-transparent group-hover:border-pink-500/50 transition-colors"
-                                                    />
-                                                ) : (
-                                                    <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white/60 group-hover:bg-white/20 transition-colors">
-                                                        {username.charAt(0).toUpperCase()}
-                                                    </div>
-                                                )}
-                                                <span className="text-white/40 text-xs truncate w-full text-center group-hover:text-white/60">
-                                                    @{username.slice(0, 6)}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
                         </>
                     )}
 
                     {/* Search Results */}
-                    {!isSearching && searchResults.length > 0 && (
+                    {searchResults.length > 0 && (
                         <div className="mt-8">
-                            {/* Results Header with Creator & Follow */}
                             <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-3">
-                                    <span className="text-white/50 text-sm">{searchResults.length} videos</span>
-                                    {searchResults[0]?.author && searchResults[0].author !== 'search' && (
+                                <span className="text-white/50 text-sm">{searchResults.length} videos</span>
+                                <div className="flex items-center gap-2">
+                                    {searchInput.startsWith('@') && (
                                         <button
-                                            onClick={() => handleFollow(searchResults[0].author)}
-                                            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${following.includes(searchResults[0].author)
-                                                ? 'bg-pink-500 text-white'
-                                                : 'bg-white/10 text-white/70 hover:bg-white/20'
+                                            onClick={() => handleFollow(searchInput.substring(1))}
+                                            className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${following.includes(searchInput.substring(1))
+                                                ? 'bg-white/10 text-white border border-white/20'
+                                                : 'bg-pink-500 text-white'
                                                 }`}
                                         >
-                                            {following.includes(searchResults[0].author) ? 'Following' : '+ Follow @' + searchResults[0].author}
+                                            {following.includes(searchInput.substring(1)) ? 'Following' : 'Follow'}
                                         </button>
                                     )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {/* Play All Button */}
                                     <button
                                         onClick={() => {
                                             const playableVideos = searchResults.filter(v => v.url);
@@ -1147,70 +1033,40 @@ export const Feed: React.FC = () => {
                                     >
                                         ▶ Play All
                                     </button>
-                                    <button
-                                        onClick={() => setSearchResults([])}
-                                        className="text-white/30 text-xs hover:text-white/60"
-                                    >
-                                        Clear
-                                    </button>
                                 </div>
                             </div>
 
-                            {/* Video Grid */}
                             <div className="grid grid-cols-3 gap-1">
                                 {searchResults.map((video) => (
                                     <div
                                         key={video.id}
-                                        className={`relative aspect-[9/16] overflow-hidden group ${video.url
-                                            ? 'cursor-pointer'
-                                            : 'opacity-40'
-                                            }`}
+                                        className="relative aspect-[9/16] overflow-hidden group cursor-pointer"
                                         onClick={() => {
                                             if (!video.url) return;
-                                            // Load ALL search results into the feed, starting from clicked video
+                                            setOriginalVideos(videos);
+                                            setOriginalIndex(currentIndex);
                                             const playableVideos = searchResults.filter(v => v.url);
-                                            if (playableVideos.length > 0) {
-                                                setVideos(playableVideos);
-                                                // Set current index to the clicked video's position in playable videos
-                                                const newIndex = playableVideos.findIndex(v => v.id === video.id);
-                                                setCurrentIndex(newIndex >= 0 ? newIndex : 0);
-                                                setActiveTab('foryou');
-                                            }
+                                            setVideos(playableVideos);
+                                            const newIndex = playableVideos.findIndex(v => v.id === video.id);
+                                            setCurrentIndex(newIndex >= 0 ? newIndex : 0);
+                                            setIsInSearchPlayback(true);
+                                            setActiveTab('foryou');
                                         }}
                                     >
-                                        {/* Thumbnail with loading placeholder */}
                                         {video.thumbnail ? (
                                             <img
                                                 src={video.thumbnail}
                                                 alt={video.author}
-                                                className="w-full h-full object-cover transition-opacity group-hover:opacity-80"
-                                                onError={(e) => {
-                                                    (e.target as HTMLImageElement).style.display = 'none';
-                                                }}
+                                                className="w-full h-full object-cover"
                                             />
                                         ) : (
                                             <div className="w-full h-full bg-white/5 flex items-center justify-center">
-                                                {video.url ? (
-                                                    <div className="w-6 h-6 border-2 border-white/20 border-t-cyan-500 rounded-full animate-spin"></div>
-                                                ) : (
-                                                    <span className="text-2xl">ℹ️</span>
-                                                )}
+                                                <div className="w-6 h-6 border-2 border-white/20 border-t-cyan-500 rounded-full animate-spin"></div>
                                             </div>
                                         )}
-
-                                        {/* Overlay with author */}
-                                        {video.url && (
-                                            <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
-                                                <p className="text-white text-xs truncate">@{video.author}</p>
-                                            </div>
-                                        )}
-
-                                        {/* Message for non-playable */}
-                                        {!video.url && video.description && (
-                                            <div className="absolute inset-0 flex items-center justify-center p-2">
-                                                <p className="text-white/60 text-xs text-center">{video.description}</p>
-                                            </div>
-                                        )}
+                                        <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                                            <p className="text-white text-xs truncate">@{video.author}</p>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -1219,6 +1075,21 @@ export const Feed: React.FC = () => {
                 </div>
             </div>
 
+            {/* In-Search Back Button */}
+            {isInSearchPlayback && (
+                <button
+                    onClick={() => {
+                        setVideos(originalVideos);
+                        setCurrentIndex(originalIndex);
+                        setIsInSearchPlayback(false);
+                        setActiveTab('search');
+                    }}
+                    className="absolute top-6 right-6 z-[60] w-10 h-10 flex items-center justify-center bg-black/40 hover:bg-black/60 backdrop-blur-md rounded-full text-white transition-all shadow-xl border border-white/10"
+                    title="Back to Search"
+                >
+                    <X size={20} />
+                </button>
+            )}
         </div>
     );
 };

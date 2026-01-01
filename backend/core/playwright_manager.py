@@ -7,10 +7,11 @@ Uses Playwright to:
 3. Intercept /item_list API responses (instead of scraping HTML)
 """
 
-import asyncio
-import json
 import os
-from typing import List, Dict, Optional
+import json
+import asyncio
+import traceback
+from typing import List, Dict, Optional, Any
 from playwright.async_api import async_playwright, Response, Browser, BrowserContext
 
 try:
@@ -52,51 +53,70 @@ class PlaywrightManager:
     _vnc_active = False
 
     @staticmethod
-    def parse_json_credentials(json_creds: dict) -> tuple[List[dict], str]:
+    def parse_json_credentials(json_creds: Any) -> tuple[List[dict], str]:
         """
-        Parse JSON credentials in the format:
-        {
-            "http": {
-                "headers": {"User-Agent": "...", "Cookie": "..."},
-                "cookies": {"sessionid": "...", "ttwid": "..."}
-            }
-        }
+        Parse JSON credentials. Supports:
+        1. Array format: [{"name": "...", "value": "..."}, ...]
+        2. http object format: {"http": {"headers": {...}, "cookies": {...}}}
         
         Returns: (cookies_list, user_agent)
         """
         cookies = []
         user_agent = PlaywrightManager.DEFAULT_USER_AGENT
         
-        http_data = json_creds.get("http", {})
-        headers = http_data.get("headers", {})
-        cookies_dict = http_data.get("cookies", {})
-        
-        # Get User-Agent from headers
-        if "User-Agent" in headers:
-            user_agent = headers["User-Agent"]
-        
-        # Parse cookies from the cookies dict (preferred)
-        if cookies_dict:
-            for name, value in cookies_dict.items():
-                cookies.append({
-                    "name": name,
-                    "value": str(value),
-                    "domain": ".tiktok.com",
-                    "path": "/"
-                })
-        # Fallback: parse from Cookie header string
-        elif "Cookie" in headers:
-            cookie_str = headers["Cookie"]
-            for part in cookie_str.split(";"):
-                part = part.strip()
-                if "=" in part:
-                    name, value = part.split("=", 1)
+        # Handle array format (Cookie-Editor)
+        if isinstance(json_creds, list):
+            for c in json_creds:
+                if isinstance(c, dict) and "name" in c and "value" in c:
+                    cookie = {
+                        "name": c["name"],
+                        "value": str(c["value"]),
+                        "domain": c.get("domain") or ".tiktok.com",
+                        "path": c.get("path") or "/",
+                        "secure": c.get("secure", True),
+                        "httpOnly": c.get("httpOnly", False)
+                    }
+                    if "sameSite" in c and c["sameSite"]:
+                        # Playwright expects "Strict", "Lax", or "None"
+                        ss = str(c["sameSite"]).capitalize()
+                        if ss in ["Strict", "Lax", "None"]:
+                            cookie["sameSite"] = ss
+                    
+                    cookies.append(cookie)
+            return cookies, user_agent
+
+        # Handle object format
+        if isinstance(json_creds, dict):
+            http_data = json_creds.get("http", {})
+            headers = http_data.get("headers", {})
+            cookies_dict = http_data.get("cookies", {})
+            
+            # Get User-Agent from headers
+            if "User-Agent" in headers:
+                user_agent = headers["User-Agent"]
+            
+            # Parse cookies from the cookies dict (preferred)
+            if cookies_dict:
+                for name, value in cookies_dict.items():
                     cookies.append({
-                        "name": name.strip(),
-                        "value": value.strip(),
+                        "name": name,
+                        "value": str(value),
                         "domain": ".tiktok.com",
                         "path": "/"
                     })
+            # Fallback: parse from Cookie header string
+            elif "Cookie" in headers:
+                cookie_str = headers["Cookie"]
+                for part in cookie_str.split(";"):
+                    part = part.strip()
+                    if "=" in part:
+                        name, value = part.split("=", 1)
+                        cookies.append({
+                            "name": name.strip(),
+                            "value": value.strip(),
+                            "domain": ".tiktok.com",
+                            "path": "/"
+                        })
         
         return cookies, user_agent
 
@@ -109,14 +129,18 @@ class PlaywrightManager:
         if os.path.exists(COOKIES_FILE):
             try:
                 with open(COOKIES_FILE, "r") as f:
-                    cookie_dict = json.load(f)
-                    for name, value in cookie_dict.items():
-                        cookies.append({
-                            "name": name,
-                            "value": str(value),
-                            "domain": ".tiktok.com",
-                            "path": "/"
-                        })
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        cookies = data
+                    elif isinstance(data, dict):
+                        # Backward compatibility or simple dict format
+                        for name, value in data.items():
+                            cookies.append({
+                                "name": name,
+                                "value": str(value),
+                                "domain": ".tiktok.com",
+                                "path": "/"
+                            })
             except Exception as e:
                 print(f"Error loading cookies: {e}")
         
@@ -131,13 +155,14 @@ class PlaywrightManager:
         return cookies, user_agent
 
     @staticmethod
-    def save_credentials(cookies: dict, user_agent: str):
+    def save_credentials(cookies: List[dict] | dict, user_agent: str = None):
         """Save cookies and user agent to files."""
         with open(COOKIES_FILE, "w") as f:
             json.dump(cookies, f, indent=2)
         
-        with open(USER_AGENT_FILE, "w") as f:
-            json.dump({"user_agent": user_agent}, f)
+        if user_agent:
+            with open(USER_AGENT_FILE, "w") as f:
+                json.dump({"user_agent": user_agent}, f)
 
     @classmethod
     async def start_vnc_login(cls) -> dict:
@@ -432,16 +457,16 @@ class PlaywrightManager:
 
     @staticmethod
     async def intercept_feed(cookies: List[dict] = None, user_agent: str = None, scroll_count: int = 5) -> List[dict]:
-        """
-        Navigate to TikTok For You page and intercept the /item_list API response.
-        
-        Args:
-            cookies: Optional list of cookies
-            user_agent: Optional user agent
-            scroll_count: Number of times to scroll to fetch more videos (0 = initial load only)
+        """Navigate to TikTok feed and intercept API responses."""
+        try:
+            return await PlaywrightManager._intercept_feed_impl(cookies, user_agent, scroll_count)
+        except Exception as e:
+            print(f"DEBUG: Error in intercept_feed: {e}")
+            print(traceback.format_exc())
+            raise e
 
-        Returns: List of video objects
-        """
+    @staticmethod
+    async def _intercept_feed_impl(cookies: List[dict] = None, user_agent: str = None, scroll_count: int = 5) -> List[dict]:
         if not cookies:
             cookies, user_agent = PlaywrightManager.load_stored_credentials()
         
@@ -487,7 +512,16 @@ class PlaywrightManager:
             )
             
             context = await browser.new_context(user_agent=user_agent)
-            await context.add_cookies(cookies)
+            
+            if cookies:
+                try:
+                    await context.add_cookies(cookies)
+                    print(f"DEBUG: Applied {len(cookies)} cookies to browser context")
+                except Exception as e:
+                    print(f"DEBUG: Error applying cookies: {e}")
+                    if len(cookies) > 0:
+                        print(f"DEBUG: Sample cookie: {cookies[0]}")
+                    raise e
             
             page = await context.new_page()
             await stealth_async(page)
@@ -694,10 +728,17 @@ class PlaywrightManager:
         return captured_videos
 
     @staticmethod
-    async def search_videos(query: str, cookies: list, user_agent: str = None, limit: int = 12) -> list:
+    async def search_videos(query: str, cookies: list, user_agent: str = None, limit: int = 20, cursor: int = 0) -> list:
         """
         Search for videos by keyword or hashtag.
         Uses Playwright to intercept TikTok search results API.
+        
+        Args:
+            query: Search query
+            cookies: Auth cookies
+            user_agent: Browser user agent
+            limit: Max videos to capture in this batch
+            cursor: Starting offset for pagination
         """
         from playwright.async_api import async_playwright, Response
         from urllib.parse import quote
@@ -709,7 +750,7 @@ class PlaywrightManager:
             print("DEBUG: No cookies available for search")
             return []
         
-        print(f"DEBUG: Searching for '{query}'...")
+        print(f"DEBUG: Searching for '{query}' (limit={limit}, cursor={cursor})...")
         
         captured_videos = []
         
@@ -728,13 +769,17 @@ class PlaywrightManager:
                     items = data.get("itemList", []) or data.get("data", []) or data.get("item_list", [])
                     
                     for item in items:
+                        # If we have enough for this specific batch, we don't need more
                         if len(captured_videos) >= limit:
                             break
+                        
                         video_data = PlaywrightManager._extract_video_data(item)
                         if video_data:
-                            captured_videos.append(video_data)
+                            # Avoid duplicates within the same capture session
+                            if not any(v['id'] == video_data['id'] for v in captured_videos):
+                                captured_videos.append(video_data)
                     
-                    print(f"DEBUG: Captured {len(items)} videos from search API")
+                    print(f"DEBUG: Captured {len(items)} videos from search API (Total batch: {len(captured_videos)})")
                     
                 except Exception as e:
                     print(f"DEBUG: Error parsing search API response: {e}")
@@ -755,22 +800,40 @@ class PlaywrightManager:
             try:
                 # Navigate to TikTok search page
                 search_url = f"https://www.tiktok.com/search/video?q={quote(query)}"
-                await page.goto(search_url, wait_until="networkidle", timeout=30000)
+                try:
+                    await page.goto(search_url, wait_until="domcontentloaded", timeout=15000)
+                except:
+                    print("DEBUG: Navigation timeout, proceeding anyway")
                 
-                # Wait for videos to load
+                # Wait for initial results
                 await asyncio.sleep(3)
                 
-                # Scroll to trigger more loading
-                for _ in range(2):
-                    await page.evaluate("window.scrollBy(0, 800)")
-                    await asyncio.sleep(1)
+                # Scroll based on cursor to reach previous results and then capture new ones
+                # Each scroll typically loads 12-20 items
+                # We scroll more as the cursor increases
+                scroll_count = (cursor // 10) + 1
+                # Limit total scrolls to avoid hanging
+                scroll_count = min(scroll_count, 10)
+                
+                for i in range(scroll_count):
+                    await page.evaluate("window.scrollBy(0, 1500)")
+                    await asyncio.sleep(1.5)
+                
+                # After reaching the offset, scroll a bit more to trigger the specific batch capture
+                batch_scrolls = (limit // 10) + 2  # Add extra scrolls to be safe
+                for _ in range(batch_scrolls):
+                    await page.evaluate("window.scrollBy(0, 2000)")  # Larger scroll
+                    await asyncio.sleep(1.0) # Faster scroll cadence
+                
+                # Wait a bit after scrolling for all responses to settle
+                await asyncio.sleep(2.5)
                 
             except Exception as e:
                 print(f"DEBUG: Error during search: {e}")
             
             await browser.close()
         
-        print(f"DEBUG: Total captured search videos: {len(captured_videos)}")
+        print(f"DEBUG: Total captured search videos in this batch: {len(captured_videos)}")
         return captured_videos
 
     @staticmethod

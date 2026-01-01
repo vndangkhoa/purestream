@@ -132,9 +132,11 @@ init_cache()
 
 # ========== API ROUTES ==========
 
+from typing import Optional, Any, Union, List, Dict
+
 class FeedRequest(BaseModel):
     """Request body for feed endpoint with optional JSON credentials."""
-    credentials: Optional[dict] = None
+    credentials: Optional[Union[Dict, List]] = None
 
 
 @router.post("")
