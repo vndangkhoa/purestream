@@ -570,6 +570,10 @@ class PlaywrightManager:
     def _extract_video_data(item: dict) -> Optional[dict]:
         """Extract video data from TikTok API item, including product/shop videos."""
         try:
+            if not isinstance(item, dict):
+                print(f"DEBUG: Skipping invalid item (type: {type(item)})")
+                return None
+
             # Handle different API response formats
             video_id = item.get("id") or item.get("aweme_id")
             

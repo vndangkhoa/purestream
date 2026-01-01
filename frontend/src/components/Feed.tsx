@@ -415,13 +415,23 @@ export const Feed: React.FC = () => {
             );
 
             if (videos.length === 0) {
-                setError('No videos found.');
-                setViewState('login');
+                // If authenticated but no videos, stay in feed view but show empty state
+                // Do NOT go back to login, as that confuses the user (they are logged in)
+                console.warn('Feed empty, but authenticated.');
+                setViewState('feed');
+                setError('No videos found. Pull to refresh or try searching.');
             }
         } catch (err: any) {
             console.error('Feed load failed:', err);
-            setError(err.response?.data?.detail || 'Failed to load feed');
-            setViewState('login');
+            // Only go back to login if it's explicitly an Auth error (401)
+            if (err.response?.status === 401) {
+                setError('Session expired. Please login again.');
+                setViewState('login');
+            } else {
+                // For other errors (500, network), stay in feed/loading and show error
+                setError(err.response?.data?.detail || 'Failed to load feed');
+                setViewState('feed');
+            }
         }
     };
 
@@ -492,6 +502,12 @@ export const Feed: React.FC = () => {
         setIsSearching(true);
         setError(null);
 
+        // Clear previous results immediately if starting a new search
+        // This ensures the skeleton loader is shown instead of old results
+        if (!isMore) {
+            setSearchResults([]);
+        }
+
         try {
             const cursor = isMore ? searchCursor : 0;
             // "Search must show at least 50 result" - fetching 50 at a time with infinite scroll
@@ -505,7 +521,25 @@ export const Feed: React.FC = () => {
             }
 
             const { data } = await axios.get(endpoint);
-            const newVideos = data.videos || [];
+            let newVideos = data.videos || [];
+
+            // Fallback: If user search (@) returns no videos, try general search
+            if (newVideos.length === 0 && !isMore && inputToSearch.startsWith('@')) {
+                console.log('User search returned empty, falling back to keyword search');
+                const fallbackQuery = inputToSearch.substring(1); // Remove @
+                const fallbackEndpoint = `${API_BASE_URL}/user/search?query=${encodeURIComponent(fallbackQuery)}&limit=${limit}&cursor=0`;
+
+                try {
+                    const fallbackRes = await axios.get(fallbackEndpoint);
+                    if (fallbackRes.data.videos && fallbackRes.data.videos.length > 0) {
+                        newVideos = fallbackRes.data.videos;
+                        // Optional: Show a toast or message saying "User not found, showing results for..."
+                        setError(`User '${inputToSearch}' not found. Showing related videos.`);
+                    }
+                } catch (fallbackErr) {
+                    console.error('Fallback search failed', fallbackErr);
+                }
+            }
 
             if (isMore) {
                 setSearchResults(prev => [...prev, ...newVideos]);
@@ -972,13 +1006,14 @@ export const Feed: React.FC = () => {
                         <p className="text-white/20 text-xs mt-2">@username · video link · keyword</p>
                     </div>
 
-                    {/* Loading Animation with Quote */}
-                    {isSearching && searchResults.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-16">
-                            <div className="w-10 h-10 border-2 border-white/10 border-t-cyan-500 rounded-full animate-spin mb-6"></div>
-                            <p className="text-white/60 text-sm italic text-center max-w-xs">
-                                "{INSPIRATION_QUOTES[Math.floor(Math.random() * INSPIRATION_QUOTES.length)].text}"
-                            </p>
+                    {/* Loading Animation - Skeleton Grid */}
+                    {isSearching && (
+                        <div className="mt-8">
+                            <div className="grid grid-cols-3 gap-1 animate-pulse">
+                                {[...Array(12)].map((_, i) => (
+                                    <div key={i} className="aspect-[9/16] bg-white/5 rounded-sm"></div>
+                                ))}
+                            </div>
                         </div>
                     )}
 

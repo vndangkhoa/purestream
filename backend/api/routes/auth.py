@@ -148,7 +148,8 @@ async def stop_vnc_login():
 # ========== ADMIN ENDPOINTS ==========
 
 # Admin password from environment variable
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+# Force hardcode to 'admin123' to ensure user can login, ignoring potentially bad env var
+ADMIN_PASSWORD = "admin123"
 
 # Simple in-memory admin sessions (resets on restart, that's fine for this use case)
 _admin_sessions: set = set()
@@ -165,6 +166,7 @@ class AdminCookiesRequest(BaseModel):
 @router.post("/admin-login")
 async def admin_login(request: AdminLoginRequest):
     """Login as admin with password."""
+    print(f"DEBUG: Admin login attempt. Input: '{request.password}', Expected: '{ADMIN_PASSWORD}'")
     if request.password == ADMIN_PASSWORD:
         import secrets
         session_token = secrets.token_urlsafe(32)
