@@ -45,6 +45,9 @@ class PlaywrightManager:
     
     DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     
+    # Use installed Chrome instead of Playwright's Chromium (avoids slow download)
+    CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    
     # VNC login state (class-level to persist across requests)
     _vnc_playwright = None
     _vnc_browser = None
@@ -528,6 +531,7 @@ class PlaywrightManager:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
+                executable_path=PlaywrightManager.CHROME_PATH,
                 args=PlaywrightManager.BROWSER_ARGS
             )
             
@@ -721,6 +725,7 @@ class PlaywrightManager:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
+                executable_path=PlaywrightManager.CHROME_PATH,
                 args=PlaywrightManager.BROWSER_ARGS
             )
             
@@ -811,6 +816,7 @@ class PlaywrightManager:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
+                executable_path=PlaywrightManager.CHROME_PATH,
                 args=PlaywrightManager.BROWSER_ARGS
             )
             
@@ -910,6 +916,7 @@ class PlaywrightManager:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
+                executable_path=PlaywrightManager.CHROME_PATH,
                 args=PlaywrightManager.BROWSER_ARGS
             )
             

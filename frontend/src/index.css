@@ -9,6 +9,12 @@
     #root {
         @apply h-full overflow-hidden;
     }
+
+    /* Mobile-safe full height - accounts for browser chrome */
+    .h-screen-safe {
+        height: 100vh;
+        height: 100dvh;
+    }
 }
 
 @layer utilities {

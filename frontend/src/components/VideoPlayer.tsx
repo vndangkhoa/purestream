@@ -25,6 +25,7 @@ interface VideoPlayerProps {
     onAuthorClick?: (author: string) => void;  // In-app navigation to creator
     isMuted?: boolean;  // Global mute state from parent
     onMuteToggle?: () => void;  // Callback to toggle parent mute state
+    onPauseChange?: (isPaused: boolean) => void;  // Notify parent when play/pause state changes
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -34,14 +35,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     onFollow,
     onAuthorClick,
     isMuted: externalMuted,
-    onMuteToggle
+    onMuteToggle,
+    onPauseChange
 }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const progressBarRef = useRef<HTMLDivElement>(null);
     const [isPaused, setIsPaused] = useState(false);
     const [showControls, setShowControls] = useState(false);
-    const [objectFit] = useState<'cover' | 'contain'>('contain');
+    const [objectFit] = useState<'cover' | 'contain'>('cover');
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
     const [isSeeking, setIsSeeking] = useState(false);
@@ -206,9 +208,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (videoRef.current.paused) {
             videoRef.current.play();
             setIsPaused(false);
+            onPauseChange?.(false);
         } else {
             videoRef.current.pause();
             setIsPaused(true);
+            onPauseChange?.(true);
         }
     };
 
@@ -390,7 +394,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             {/* Loading Overlay - Subtle pulsing logo */}
             {isLoading && !codecError && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-20">
-                    <div className="w-16 h-16 bg-gradient-to-r from-cyan-400/80 to-pink-500/80 rounded-2xl flex items-center justify-center animate-pulse">
+                    <div className="w-16 h-16 bg-gradient-to-r from-gray-400/80 to-gray-300/80 rounded-2xl flex items-center justify-center animate-pulse">
                         <svg className="w-8 h-8 text-white" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
                         </svg>
@@ -409,7 +413,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <a
                         href={downloadUrl}
                         download
-                        className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-pink-500 text-white text-sm font-medium rounded-full hover:opacity-90 transition-opacity"
+                        className="px-4 py-2 bg-gradient-to-r from-gray-500 to-gray-400 text-white text-sm font-medium rounded-full hover:opacity-90 transition-opacity"
                         onClick={(e) => e.stopPropagation()}
                     >
                         Download Video
@@ -427,7 +431,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         top: heart.y - 24,
                     }}
                 >
-                    <svg className="w-16 h-16 text-pink-500 drop-shadow-xl filter drop-shadow-lg" viewBox="0 0 24 24" fill="currentColor">
+                    <svg className="w-16 h-16 text-white drop-shadow-xl filter drop-shadow-lg" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
                     </svg>
                 </div>
@@ -459,7 +463,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     onTouchEnd={handleSeekEnd}
                 >
                     <div
-                        className="h-full bg-gradient-to-r from-cyan-400 to-pink-500 transition-all pointer-events-none"
+                        className="h-full bg-gradient-to-r from-gray-400 to-gray-300 transition-all pointer-events-none"
                         style={{ width: duration ? `${(progress / duration) * 100}%` : '0%' }}
                     />
                     {/* Scrubber Thumb (always visible when seeking or on hover) */}
@@ -478,9 +482,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 )}
             </div>
 
-            {/* Side Controls - Hidden by default, reveal on swipe/interaction */}
+            {/* Side Controls - Only show when video is paused */}
             <div
-                className={`absolute bottom-36 right-4 flex flex-col gap-3 transition-all duration-300 transform ${showSidebar ? 'translate-x-0 opacity-100' : 'translate-x-[200%] opacity-0'
+                className={`absolute bottom-36 right-4 flex flex-col gap-3 transition-all duration-300 transform ${isPaused && showSidebar ? 'translate-x-0 opacity-100' : 'translate-x-[200%] opacity-0'
                     }`}
             >
                 {/* Follow Button */}
@@ -488,7 +492,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <button
                         onClick={(e) => { e.stopPropagation(); onFollow(video.author); }}
                         className={`w-12 h-12 flex items-center justify-center backdrop-blur-xl border border-white/10 rounded-full transition-all ${isFollowing
-                            ? 'bg-pink-500 text-white'
+                            ? 'bg-gray-500 text-white'
                             : 'bg-white/10 hover:bg-white/20 text-white'
                             }`}
                         title={isFollowing ? 'Following' : 'Follow'}
@@ -517,15 +521,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </button>
             </div>
 
-            {/* Author Info */}
-            <div className="absolute bottom-10 left-4 right-20 z-10">
+            {/* Author Info - Only show when video is paused */}
+            <div className={`absolute bottom-10 left-4 right-20 z-10 transition-opacity duration-300 ${isPaused ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                 <div className="flex items-center gap-2">
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
                             onAuthorClick?.(video.author);
                         }}
-                        className="text-white font-semibold text-sm truncate hover:text-cyan-400 transition-colors inline-flex items-center gap-1"
+                        className="text-white font-semibold text-sm truncate hover:text-white/70 transition-colors inline-flex items-center gap-1"
                     >
                         @{video.author}
                         <svg className="w-3 h-3 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -551,12 +555,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 )}
             </div>
 
-            {/* Bottom Gradient */}
-            <div className="absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+            {/* Bottom Gradient - Only show when video is paused */}
+            <div className={`absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-black/80 to-transparent pointer-events-none transition-opacity duration-300 ${isPaused ? 'opacity-100' : 'opacity-0'}`} />
 
-            {/* Right Sidebar Hint - Small vertical bar/glow on edge */}
+            {/* Right Sidebar Hint - Only show when video is paused */}
             <div
-                className={`absolute top-0 right-0 w-6 h-full z-40 flex items-center justify-end cursor-pointer ${showSidebar ? 'pointer-events-none' : ''}`}
+                className={`absolute top-0 right-0 w-6 h-full z-40 flex items-center justify-end cursor-pointer transition-opacity duration-300 ${isPaused ? 'opacity-100' : 'opacity-0 pointer-events-none'} ${showSidebar ? 'pointer-events-none' : ''}`}
                 onClick={(e) => { e.stopPropagation(); setShowSidebar(true); }}
                 onTouchEnd={() => {
                     // Check if it was a swipe logic here or just rely on the click/tap

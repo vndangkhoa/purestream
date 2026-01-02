@@ -23,7 +23,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ onSearch }) => {
             {/* Search Icon / Toggle */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className={`text-white p-3 hover:text-pink-500 transition-colors duration-300 ${isOpen ? '' : 'w-full h-full flex items-center justify-center'}`}
+                className={`text-white p-3 hover:text-white transition-colors duration-300 ${isOpen ? '' : 'w-full h-full flex items-center justify-center'}`}
             >
                 <Search size={isOpen ? 18 : 20} className={isOpen ? 'opacity-60' : ''} />
             </button>
@@ -41,7 +41,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({ onSearch }) => {
             </form>
 
             {isOpen && (
-                <div className="absolute inset-0 bg-gradient-to-r from-pink-500/10 to-violet-500/10 pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-r from-gray-400/10 to-gray-300/10 pointer-events-none" />
             )}
         </div>
     );

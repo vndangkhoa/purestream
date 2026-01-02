@@ -109,6 +109,7 @@ export const Feed: React.FC = () => {
     const [suggestedLimit, setSuggestedLimit] = useState(12);
     const [showHeader, setShowHeader] = useState(false);
     const [isFollowingFeed, setIsFollowingFeed] = useState(false);
+    const [isVideoPaused, setIsVideoPaused] = useState(true);  // Tracks if current video is paused (controls UI visibility)
     // Lazy load - start with 12
 
     // Search state
@@ -117,9 +118,37 @@ export const Feed: React.FC = () => {
     const [isSearching, setIsSearching] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showAdvanced, setShowAdvanced] = useState(false);
+    const [searchMatchedUser, setSearchMatchedUser] = useState<UserProfile | null>(null);
 
     // Global mute state - persists across video scrolling
     const [isMuted, setIsMuted] = useState(true);
+
+    // Profile View state - grid of videos from a specific user
+    const [profileViewUsername, setProfileViewUsername] = useState<string | null>(null);
+    const [profileVideos, setProfileVideos] = useState<Video[]>([]);
+    const [profileLoading, setProfileLoading] = useState(false);
+    const [profileHasMore, setProfileHasMore] = useState(true);
+    const [profileUserData, setProfileUserData] = useState<UserProfile | null>(null);
+    const profileGridRef = useRef<HTMLDivElement>(null);
+
+    // Loading timer state - shows elapsed time during video crawling
+    const [loadingElapsed, setLoadingElapsed] = useState(0);
+    const loadingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Start/stop loading timer helper functions
+    const startLoadingTimer = () => {
+        setLoadingElapsed(0);
+        loadingTimerRef.current = setInterval(() => {
+            setLoadingElapsed(prev => prev + 1);
+        }, 1000);
+    };
+
+    const stopLoadingTimer = () => {
+        if (loadingTimerRef.current) {
+            clearInterval(loadingTimerRef.current);
+            loadingTimerRef.current = null;
+        }
+    };
 
     // ========== SWIPE LOGIC ==========
     const touchStart = useRef<number | null>(null);
@@ -475,6 +504,106 @@ export const Feed: React.FC = () => {
         handleSearch(false, `@${username}`);
     };
 
+    // Open profile view with video grid
+    const openProfileView = async (username: string) => {
+        const cleanUsername = username.replace('@', '');
+        setProfileViewUsername(cleanUsername);
+        setProfileVideos([]);
+        setProfileLoading(true);
+        setProfileHasMore(true);
+        setProfileUserData(null);
+        startLoadingTimer(); // Start countdown timer
+
+        // Pause the currently playing video by switching active tab temporarily
+        // This triggers VideoPlayer's isActive=false which pauses the video
+        setActiveTab('following'); // Switch away from 'foryou' to pause video
+
+        try {
+            // Fetch user profile data first (show header ASAP)
+            const profileRes = await axios.get(`${API_BASE_URL}/user/profile?username=${cleanUsername}`);
+            setProfileUserData(profileRes.data);
+
+            // Fetch videos progressively - load smaller batches and show immediately
+            const batchSize = 5;
+            let totalFetched = 0;
+            const maxVideos = 20;
+
+            while (totalFetched < maxVideos) {
+                const videosRes = await axios.get(`${API_BASE_URL}/user/videos?username=${cleanUsername}&limit=${batchSize}&offset=${totalFetched}`);
+                const newVideos = videosRes.data.videos || [];
+
+                if (newVideos.length === 0) {
+                    setProfileHasMore(false);
+                    break;
+                }
+
+                // Append videos immediately as they load (progressive loading) - filter duplicates
+                setProfileVideos(prev => {
+                    const existingIds = new Set(prev.map(v => v.id));
+                    const uniqueNewVideos = newVideos.filter((v: Video) => !existingIds.has(v.id));
+                    return [...prev, ...uniqueNewVideos];
+                });
+                totalFetched += newVideos.length;
+
+                // If we got less than batch size, no more videos
+                if (newVideos.length < batchSize) {
+                    setProfileHasMore(false);
+                    break;
+                }
+            }
+
+            // Check if there might be more videos beyond initial 20
+            if (totalFetched >= maxVideos) {
+                setProfileHasMore(true);
+            }
+        } catch (err) {
+            console.error('Error loading profile:', err);
+            setError('Failed to load profile');
+        } finally {
+            setProfileLoading(false);
+            stopLoadingTimer(); // Stop countdown timer
+        }
+    };
+
+    // Load more profile videos (lazy load)
+    const loadMoreProfileVideos = async () => {
+        if (!profileViewUsername || profileLoading || !profileHasMore) return;
+        setProfileLoading(true);
+
+        try {
+            // Use offset/cursor for pagination
+            const offset = profileVideos.length;
+            const videosRes = await axios.get(`${API_BASE_URL}/user/videos?username=${profileViewUsername}&limit=20&offset=${offset}`);
+            const newVideos = videosRes.data.videos || [];
+
+            if (newVideos.length === 0) {
+                setProfileHasMore(false);
+            } else {
+                setProfileVideos(prev => [...prev, ...newVideos]);
+                setProfileHasMore(newVideos.length >= 20);
+            }
+        } catch (err) {
+            console.error('Error loading more profile videos:', err);
+        } finally {
+            setProfileLoading(false);
+        }
+    };
+
+    // Close profile view
+    const closeProfileView = () => {
+        setProfileViewUsername(null);
+        setProfileVideos([]);
+        setProfileUserData(null);
+    };
+
+    // Handle profile grid scroll for lazy loading
+    const handleProfileGridScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+        if (scrollHeight - scrollTop <= clientHeight + 200 && profileHasMore && !profileLoading) {
+            loadMoreProfileVideos();
+        }
+    };
+
     // Direct keyword search
     const searchByKeyword = async (keyword: string) => {
         setSearchInput(keyword);
@@ -488,62 +617,72 @@ export const Feed: React.FC = () => {
 
         setIsSearching(true);
         setError(null);
+        startLoadingTimer(); // Start countdown timer
 
         // Clear previous results immediately if starting a new search
-        // This ensures the skeleton loader is shown instead of old results
         if (!isMore) {
             setSearchResults([]);
+            setSearchMatchedUser(null);
         }
 
         try {
-            const cursor = isMore ? searchCursor : 0;
-            // "Search must show at least 50 result" - fetching 50 at a time with infinite scroll
-            const limit = 50;
+            const startCursor = isMore ? searchCursor : 0;
+            const cleanQuery = inputToSearch.startsWith('@') ? inputToSearch.substring(1) : inputToSearch;
 
-            let endpoint = `${API_BASE_URL}/user/search?query=${encodeURIComponent(inputToSearch)}&limit=${limit}&cursor=${cursor}`;
-
-            // If direct username search
-            if (inputToSearch.startsWith('@')) {
-                endpoint = `${API_BASE_URL}/user/videos?username=${inputToSearch.substring(1)}&limit=${limit}`;
-            }
-
-            const { data } = await axios.get(endpoint);
-            let newVideos = data.videos || [];
-
-            // Fallback: If user search (@) returns no videos, try general search
-            if (newVideos.length === 0 && !isMore && inputToSearch.startsWith('@')) {
-                console.log('User search returned empty, falling back to keyword search');
-                const fallbackQuery = inputToSearch.substring(1); // Remove @
-                const fallbackEndpoint = `${API_BASE_URL}/user/search?query=${encodeURIComponent(fallbackQuery)}&limit=${limit}&cursor=0`;
-
+            // Step 1: Try to find a matching user profile (only on first search)
+            if (!isMore) {
                 try {
-                    const fallbackRes = await axios.get(fallbackEndpoint);
-                    if (fallbackRes.data.videos && fallbackRes.data.videos.length > 0) {
-                        newVideos = fallbackRes.data.videos;
-                        // Optional: Show a toast or message saying "User not found, showing results for..."
-                        setError(`User '${inputToSearch}' not found. Showing related videos.`);
+                    const profileRes = await axios.get(`${API_BASE_URL}/user/profile?username=${encodeURIComponent(cleanQuery)}`);
+                    if (profileRes.data && profileRes.data.username) {
+                        setSearchMatchedUser(profileRes.data);
+                        console.log('Found matching user:', profileRes.data.username);
                     }
-                } catch (fallbackErr) {
-                    console.error('Fallback search failed', fallbackErr);
+                } catch (profileErr) {
+                    console.log('No matching user for:', cleanQuery);
+                    setSearchMatchedUser(null);
                 }
             }
 
-            if (isMore) {
-                setSearchResults(prev => [...prev, ...newVideos]);
-            } else {
-                setSearchResults(newVideos);
+            // Step 2: Always fetch related/suggested videos progressively
+            const batchSize = 10;
+            let totalFetched = 0;
+            const maxVideos = 50;
+
+            while (totalFetched < maxVideos) {
+                const endpoint = `${API_BASE_URL}/user/search?query=${encodeURIComponent(cleanQuery)}&limit=${batchSize}&cursor=${startCursor + totalFetched}`;
+                const { data } = await axios.get(endpoint);
+                const newVideos = data.videos || [];
+
+                if (newVideos.length === 0) {
+                    setSearchHasMore(false);
+                    break;
+                }
+
+                // Filter out duplicates before adding
+                setSearchResults(prev => {
+                    const existingIds = new Set(prev.map(v => v.id));
+                    const uniqueNewVideos = newVideos.filter((v: Video) => !existingIds.has(v.id));
+                    return isMore || totalFetched > 0 ? [...prev, ...uniqueNewVideos] : uniqueNewVideos;
+                });
+                totalFetched += newVideos.length;
+                setSearchCursor(data.cursor || startCursor + totalFetched);
+
+                if (newVideos.length < batchSize) {
+                    setSearchHasMore(false);
+                    break;
+                }
             }
 
-            setSearchCursor(data.cursor || 0);
-            // If we got results, assume there's more (TikTok has endless content)
-            // unless the count is very small (e.g. < 5) which might indicate end
-            setSearchHasMore(newVideos.length >= 5);
+            if (totalFetched >= maxVideos) {
+                setSearchHasMore(true);
+            }
 
         } catch (err) {
             console.error('Search failed:', err);
             setError('Search failed. Please try again.');
         } finally {
             setIsSearching(false);
+            stopLoadingTimer(); // Stop countdown timer
         }
     };
 
@@ -561,8 +700,8 @@ export const Feed: React.FC = () => {
                 {/* Header */}
                 <div className="flex-shrink-0 pt-12 pb-6 px-6 text-center">
                     <div className="relative inline-block mb-4">
-                        <div className="w-16 h-16 bg-gradient-to-r from-cyan-400 to-pink-500 rounded-2xl rotate-12 absolute -inset-1 blur-lg opacity-50" />
-                        <div className="relative w-16 h-16 bg-gradient-to-r from-cyan-400 to-pink-500 rounded-2xl flex items-center justify-center">
+                        <div className="w-16 h-16 bg-gradient-to-r from-gray-400 to-gray-300 rounded-2xl rotate-12 absolute -inset-1 blur-lg opacity-50" />
+                        <div className="relative w-16 h-16 bg-gradient-to-r from-gray-400 to-gray-300 rounded-2xl flex items-center justify-center">
                             <svg className="w-8 h-8 text-white" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
                             </svg>
@@ -587,7 +726,7 @@ export const Feed: React.FC = () => {
 
                             <div className="space-y-3">
                                 <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl">
-                                    <div className="w-7 h-7 bg-cyan-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">1</div>
+                                    <div className="w-7 h-7 bg-gray-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">1</div>
                                     <div>
                                         <p className="text-white text-sm font-medium">Open TikTok in browser</p>
                                         <p className="text-gray-500 text-xs mt-0.5">Use Chrome/Safari on your phone or computer</p>
@@ -595,7 +734,7 @@ export const Feed: React.FC = () => {
                                 </div>
 
                                 <div className="flex items-start gap-3 p-3 bg-white/5 rounded-xl">
-                                    <div className="w-7 h-7 bg-pink-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">2</div>
+                                    <div className="w-7 h-7 bg-gray-500 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">2</div>
                                     <div>
                                         <p className="text-white text-sm font-medium">Export your cookies</p>
                                         <p className="text-gray-500 text-xs mt-0.5">Use "Cookie-Editor" extension (Chrome/Firefox)</p>
@@ -618,7 +757,7 @@ export const Feed: React.FC = () => {
                                 value={jsonInput}
                                 onChange={(e) => setJsonInput(e.target.value)}
                                 placeholder='Paste your cookie JSON here...'
-                                className="w-full h-32 bg-black/60 border-2 border-white/10 rounded-2xl p-4 text-white text-sm font-mono resize-none focus:outline-none focus:border-cyan-500/50 placeholder:text-gray-600"
+                                className="w-full h-32 bg-black/60 border-2 border-white/10 rounded-2xl p-4 text-white text-sm font-mono resize-none focus:outline-none focus:border-gray-400/50 placeholder:text-gray-600"
                             />
                         </div>
 
@@ -627,7 +766,7 @@ export const Feed: React.FC = () => {
                             onClick={handleJsonLogin}
                             disabled={!jsonInput.trim()}
                             className={`w-full py-4 text-white font-semibold rounded-2xl transition-all transform active:scale-[0.98] shadow-lg text-base ${jsonInput.trim()
-                                ? 'bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-400 hover:to-pink-400 shadow-pink-500/20'
+                                ? 'bg-gradient-to-r from-gray-500 to-gray-400 hover:from-gray-400 hover:to-gray-300 shadow-gray-500/20'
                                 : 'bg-gray-700 cursor-not-allowed'
                                 }`}
                         >
@@ -640,7 +779,7 @@ export const Feed: React.FC = () => {
                                 href="https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-cyan-400 text-sm underline"
+                                className="text-white/70 text-sm underline"
                             >
                                 Get Cookie-Editor Extension →
                             </a>
@@ -681,10 +820,10 @@ export const Feed: React.FC = () => {
         return (
             <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950 flex flex-col items-center justify-center">
                 <div className="relative mb-8">
-                    <div className="absolute inset-0 blur-xl bg-gradient-to-r from-cyan-500/30 via-pink-500/30 to-cyan-500/30 animate-pulse rounded-full scale-150" />
+                    <div className="absolute inset-0 blur-xl bg-gradient-to-r from-gray-400/30 via-gray-300/30 to-gray-400/30 animate-pulse rounded-full scale-150" />
                     <div className="relative w-20 h-20 flex items-center justify-center">
-                        <div className="absolute w-16 h-16 bg-cyan-400 rounded-xl rotate-12 animate-pulse" />
-                        <div className="absolute w-16 h-16 bg-pink-500 rounded-xl -rotate-12 animate-pulse" style={{ animationDelay: '0.3s' }} />
+                        <div className="absolute w-16 h-16 bg-gray-400 rounded-xl rotate-12 animate-pulse" />
+                        <div className="absolute w-16 h-16 bg-gray-500 rounded-xl -rotate-12 animate-pulse" style={{ animationDelay: '0.3s' }} />
                         <div className="absolute w-16 h-16 bg-white rounded-xl flex items-center justify-center z-10">
                             <svg className="w-8 h-8 text-black" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
@@ -774,21 +913,21 @@ export const Feed: React.FC = () => {
                     ? '-translate-x-full opacity-0 pointer-events-none'
                     : 'translate-x-full opacity-0 pointer-events-none'
                 }`}>
-                {/* Video Counter */}
-                <div className="absolute bottom-6 right-4 z-40 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-full border border-white/10">
+                {/* Video Counter - Shows loading state with blink effect */}
+                <div className={`absolute bottom-6 right-4 z-40 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-full border border-white/10 transition-all ${isFetching ? 'animate-pulse border-gray-400/50' : ''}`}>
                     <span className="text-xs text-white/60 font-medium">
-                        {currentIndex + 1} / {videos.length}
-                        {hasMore && <span className="text-cyan-400 ml-1">+</span>}
+                        {isFetching ? (
+                            <span className="text-white/70">
+                                Loading {currentIndex + 1}/{videos.length}...
+                            </span>
+                        ) : (
+                            <>
+                                {currentIndex + 1} / {videos.length}
+                                {hasMore && <span className="text-white/70 ml-1">+</span>}
+                            </>
+                        )}
                     </span>
                 </div>
-
-                {/* Loading Indicator */}
-                {isFetching && (
-                    <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 px-4 py-2 bg-black/80 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
-                        <div className="w-2 h-2 bg-cyan-400 rounded-full animate-ping" />
-                        <span className="text-xs text-white/70">Loading more...</span>
-                    </div>
-                )}
 
                 {/* Video Feed */}
                 <div
@@ -798,16 +937,20 @@ export const Feed: React.FC = () => {
                     style={{ scrollbarWidth: 'none' }}
                 >
                     {videos.map((video, index) => (
-                        <div key={video.id} className="w-full h-screen snap-start snap-always bg-black">
+                        <div key={video.id} className="w-full h-screen-safe snap-start snap-always bg-black">
                             {Math.abs(index - currentIndex) <= 1 ? (
                                 <VideoPlayer
                                     video={video}
                                     isActive={activeTab === 'foryou' && index === currentIndex}
                                     isFollowing={following.includes(video.author)}
                                     onFollow={handleFollow}
-                                    onAuthorClick={(author) => searchByUsername(author)}
+                                    onAuthorClick={(author) => openProfileView(author)}
                                     isMuted={isMuted}
                                     onMuteToggle={() => setIsMuted(prev => !prev)}
+                                    onPauseChange={(paused) => {
+                                        setIsVideoPaused(paused);
+                                        setShowHeader(paused);  // Show top bar when video is paused
+                                    }}
                                 />
                             ) : (
                                 /* Lightweight Placeholder */
@@ -907,7 +1050,7 @@ export const Feed: React.FC = () => {
 
                         {loadingProfiles && (
                             <div className="flex justify-center py-8">
-                                <div className="w-8 h-8 border-2 border-white/10 border-t-cyan-500 rounded-full animate-spin"></div>
+                                <div className="w-8 h-8 border-2 border-white/10 border-t-gray-400 rounded-full animate-spin"></div>
                             </div>
                         )}
 
@@ -925,7 +1068,7 @@ export const Feed: React.FC = () => {
                                             <img
                                                 src={profile.avatar}
                                                 alt={username}
-                                                className="w-14 h-14 rounded-full object-cover border-2 border-transparent group-hover:border-pink-500/50 transition-colors"
+                                                className="w-14 h-14 rounded-full object-cover border-2 border-transparent group-hover:border-gray-400/50 transition-colors"
                                             />
                                         ) : (
                                             <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center text-white/60 text-lg font-medium group-hover:bg-white/20 transition-colors">
@@ -993,9 +1136,19 @@ export const Feed: React.FC = () => {
                         <p className="text-white/20 text-xs mt-2">@username · video link · keyword</p>
                     </div>
 
-                    {/* Loading Animation - Skeleton Grid */}
+                    {/* Loading Animation - Skeleton Grid with Timer */}
                     {isSearching && (
                         <div className="mt-8">
+                            {/* Loading Timer Display */}
+                            <div className="flex items-center justify-center gap-3 mb-6">
+                                <div className="w-5 h-5 border-2 border-white/20 border-t-gray-400 rounded-full animate-spin" />
+                                <span className="text-white/60 text-sm">
+                                    Loading videos...
+                                </span>
+                                <span className="text-white/70 font-mono text-sm tabular-nums">
+                                    {Math.floor(loadingElapsed / 60)}:{(loadingElapsed % 60).toString().padStart(2, '0')}
+                                </span>
+                            </div>
                             <div className="grid grid-cols-3 gap-1 animate-pulse">
                                 {[...Array(12)].map((_, i) => (
                                     <div key={i} className="aspect-[9/16] bg-white/5 rounded-sm"></div>
@@ -1025,9 +1178,72 @@ export const Feed: React.FC = () => {
                         </>
                     )}
 
+                    {/* Matched User Profile Card */}
+                    {searchMatchedUser && (
+                        <div className="mb-6 p-4 bg-gradient-to-r from-white/5 to-white/10 rounded-2xl border border-white/10">
+                            <div className="flex items-center gap-4">
+                                {/* Avatar */}
+                                {searchMatchedUser.avatar ? (
+                                    <img
+                                        src={searchMatchedUser.avatar}
+                                        alt={searchMatchedUser.username}
+                                        className="w-16 h-16 rounded-full object-cover border-2 border-white/20"
+                                    />
+                                ) : (
+                                    <div className="w-16 h-16 rounded-full bg-gradient-to-r from-gray-500 to-gray-400 flex items-center justify-center text-white text-2xl font-bold">
+                                        {searchMatchedUser.username.charAt(0).toUpperCase()}
+                                    </div>
+                                )}
+
+                                {/* User Info */}
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="text-white font-bold text-lg truncate flex items-center gap-2">
+                                        @{searchMatchedUser.username}
+                                        {searchMatchedUser.verified && (
+                                            <svg className="w-4 h-4 text-white/70" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        )}
+                                    </h3>
+                                    {searchMatchedUser.nickname && (
+                                        <p className="text-white/60 text-sm truncate">{searchMatchedUser.nickname}</p>
+                                    )}
+                                    <div className="flex items-center gap-3 mt-1 text-white/50 text-xs">
+                                        {searchMatchedUser.followers !== undefined && (
+                                            <span>
+                                                {searchMatchedUser.followers >= 1000000
+                                                    ? `${(searchMatchedUser.followers / 1000000).toFixed(1)}M`
+                                                    : searchMatchedUser.followers >= 1000
+                                                        ? `${(searchMatchedUser.followers / 1000).toFixed(0)}K`
+                                                        : searchMatchedUser.followers} followers
+                                            </span>
+                                        )}
+                                        {searchMatchedUser.likes !== undefined && (
+                                            <span>
+                                                {searchMatchedUser.likes >= 1000000
+                                                    ? `${(searchMatchedUser.likes / 1000000).toFixed(1)}M`
+                                                    : searchMatchedUser.likes >= 1000
+                                                        ? `${(searchMatchedUser.likes / 1000).toFixed(0)}K`
+                                                        : searchMatchedUser.likes} likes
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* View Profile Button */}
+                                <button
+                                    onClick={() => openProfileView(searchMatchedUser.username)}
+                                    className="px-4 py-2 bg-gradient-to-r from-gray-500 to-gray-400 rounded-full text-white text-sm font-medium hover:opacity-90 transition-opacity"
+                                >
+                                    View Profile
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Search Results */}
                     {searchResults.length > 0 && (
-                        <div className="mt-8">
+                        <div className="mt-4">
                             <div className="flex items-center justify-between mb-4">
                                 <span className="text-white/50 text-sm">{searchResults.length} videos</span>
                                 <div className="flex items-center gap-2">
@@ -1036,7 +1252,7 @@ export const Feed: React.FC = () => {
                                             onClick={() => handleFollow(searchInput.substring(1))}
                                             className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${following.includes(searchInput.substring(1))
                                                 ? 'bg-white/10 text-white border border-white/20'
-                                                : 'bg-pink-500 text-white'
+                                                : 'bg-gray-500 text-white'
                                                 }`}
                                         >
                                             {following.includes(searchInput.substring(1)) ? 'Following' : 'Follow'}
@@ -1051,7 +1267,7 @@ export const Feed: React.FC = () => {
                                                 setActiveTab('foryou');
                                             }
                                         }}
-                                        className="px-3 py-1 bg-gradient-to-r from-cyan-500 to-pink-500 rounded-full text-xs font-medium text-white"
+                                        className="px-3 py-1 bg-gradient-to-r from-gray-500 to-gray-400 rounded-full text-xs font-medium text-white"
                                     >
                                         ▶ Play All
                                     </button>
@@ -1083,7 +1299,7 @@ export const Feed: React.FC = () => {
                                             />
                                         ) : (
                                             <div className="w-full h-full bg-white/5 flex items-center justify-center">
-                                                <div className="w-6 h-6 border-2 border-white/20 border-t-cyan-500 rounded-full animate-spin"></div>
+                                                <div className="w-6 h-6 border-2 border-white/20 border-t-gray-400 rounded-full animate-spin"></div>
                                             </div>
                                         )}
                                         <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
@@ -1111,6 +1327,186 @@ export const Feed: React.FC = () => {
                 >
                     <X size={20} />
                 </button>
+            )}
+
+            {/* Profile View Overlay */}
+            {profileViewUsername && (
+                <div className="fixed inset-0 z-[70] bg-black/95 overflow-hidden">
+                    {/* Profile Header */}
+                    <div className="sticky top-0 z-10 bg-gradient-to-b from-black via-black/90 to-transparent pt-6 pb-8 px-4">
+                        <div className="max-w-lg mx-auto">
+                            <div className="flex items-center gap-4">
+                                {/* Back Button */}
+                                <button
+                                    onClick={closeProfileView}
+                                    className="w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full text-white transition-all"
+                                >
+                                    <X size={20} />
+                                </button>
+
+                                {/* Avatar */}
+                                {profileUserData?.avatar ? (
+                                    <img
+                                        src={profileUserData.avatar}
+                                        alt={profileViewUsername}
+                                        className="w-16 h-16 rounded-full object-cover border-2 border-white/20"
+                                    />
+                                ) : (
+                                    <div className="w-16 h-16 rounded-full bg-gradient-to-r from-gray-500 to-gray-400 flex items-center justify-center text-white text-2xl font-bold">
+                                        {profileViewUsername.charAt(0).toUpperCase()}
+                                    </div>
+                                )}
+
+                                {/* User Info */}
+                                <div className="flex-1 min-w-0">
+                                    <h2 className="text-white font-bold text-base truncate">
+                                        @{profileViewUsername}
+                                    </h2>
+                                    {profileUserData?.nickname && (
+                                        <p className="text-white/60 text-xs truncate">{profileUserData.nickname}</p>
+                                    )}
+                                    <div className="flex items-center gap-3 mt-1">
+                                        {profileUserData?.followers !== undefined && (
+                                            <span className="text-white/50 text-[10px]">
+                                                {profileUserData.followers >= 1000000
+                                                    ? `${(profileUserData.followers / 1000000).toFixed(1)}M`
+                                                    : profileUserData.followers >= 1000
+                                                        ? `${(profileUserData.followers / 1000).toFixed(0)}K`
+                                                        : profileUserData.followers} followers
+                                            </span>
+                                        )}
+                                        {profileVideos.length > 0 && (
+                                            <span className="text-white/50 text-xs">
+                                                {profileVideos.length} videos
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Follow Button */}
+                                <button
+                                    onClick={() => handleFollow(profileViewUsername)}
+                                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${following.includes(profileViewUsername)
+                                        ? 'bg-white/10 text-white border border-white/20'
+                                        : 'bg-gradient-to-r from-gray-500 to-gray-400 text-white'
+                                        }`}
+                                >
+                                    {following.includes(profileViewUsername) ? 'Following' : 'Follow'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Video Grid */}
+                    <div
+                        ref={profileGridRef}
+                        className="h-[calc(100vh-120px)] overflow-y-auto px-1"
+                        onScroll={handleProfileGridScroll}
+                    >
+                        <div className="max-w-lg mx-auto">
+                            {/* Loading Skeleton (Initial Load) with Timer */}
+                            {profileLoading && profileVideos.length === 0 && (
+                                <div>
+                                    {/* Loading Timer Display */}
+                                    <div className="flex items-center justify-center gap-3 mb-6">
+                                        <div className="w-5 h-5 border-2 border-white/20 border-t-gray-400 rounded-full animate-spin" />
+                                        <span className="text-white/60 text-sm">
+                                            Loading profile...
+                                        </span>
+                                        <span className="text-white/70 font-mono text-sm tabular-nums">
+                                            {Math.floor(loadingElapsed / 60)}:{(loadingElapsed % 60).toString().padStart(2, '0')}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-1 animate-pulse">
+                                        {[...Array(12)].map((_, i) => (
+                                            <div key={i} className="aspect-[9/16] bg-white/5 rounded-sm" />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Video Grid */}
+                            {profileVideos.length > 0 && (
+                                <div className="grid grid-cols-3 gap-1">
+                                    {profileVideos.map((video) => (
+                                        <div
+                                            key={video.id}
+                                            className="relative aspect-[9/16] overflow-hidden group cursor-pointer"
+                                            onClick={() => {
+                                                if (!video.url) return;
+                                                // Save current state for back navigation
+                                                setOriginalVideos(videos);
+                                                setOriginalIndex(currentIndex);
+                                                // Set videos to profile videos and play
+                                                const playableVideos = profileVideos.filter(v => v.url);
+                                                setVideos(playableVideos);
+                                                const newIndex = playableVideos.findIndex(v => v.id === video.id);
+                                                setCurrentIndex(newIndex >= 0 ? newIndex : 0);
+                                                setIsInSearchPlayback(true);
+                                                setActiveTab('foryou');
+                                                closeProfileView();
+                                            }}
+                                        >
+                                            {video.thumbnail ? (
+                                                <img
+                                                    src={video.thumbnail}
+                                                    alt={video.description || video.author}
+                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                                    loading="lazy"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full bg-white/5 flex items-center justify-center">
+                                                    <div className="w-6 h-6 border-2 border-white/20 border-t-gray-400 rounded-full animate-spin" />
+                                                </div>
+                                            )}
+                                            {/* Hover Overlay */}
+                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                                                <svg className="w-10 h-10 text-white opacity-0 group-hover:opacity-80 transition-opacity" viewBox="0 0 24 24" fill="currentColor">
+                                                    <path d="M8 5v14l11-7z" />
+                                                </svg>
+                                            </div>
+                                            {/* Views Badge */}
+                                            {video.views && (
+                                                <div className="absolute bottom-1 left-1 text-white/80 text-xs font-medium drop-shadow-lg">
+                                                    {video.views >= 1000000
+                                                        ? `${(video.views / 1000000).toFixed(1)}M`
+                                                        : video.views >= 1000
+                                                            ? `${(video.views / 1000).toFixed(0)}K`
+                                                            : video.views}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Loading More Indicator */}
+                            {profileLoading && profileVideos.length > 0 && (
+                                <div className="flex justify-center py-6">
+                                    <div className="w-6 h-6 border-2 border-white/10 border-t-gray-400 rounded-full animate-spin" />
+                                </div>
+                            )}
+
+                            {/* No More Videos */}
+                            {!profileHasMore && profileVideos.length > 0 && (
+                                <p className="text-center text-white/30 text-sm py-6">No more videos</p>
+                            )}
+
+                            {/* Empty State */}
+                            {!profileLoading && profileVideos.length === 0 && (
+                                <div className="flex flex-col items-center justify-center py-16">
+                                    <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
+                                        <svg className="w-8 h-8 text-white/30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <rect x="2" y="2" width="20" height="20" rx="2" />
+                                            <path d="M10 8l6 4-6 4V8z" />
+                                        </svg>
+                                    </div>
+                                    <p className="text-white/50 text-sm">No videos found</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
